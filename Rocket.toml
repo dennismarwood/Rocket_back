@@ -1,0 +1,6 @@
+[default]
+address = "0.0.0.0"
+port = 8001
+
+[global.databases]
+#mysql_path = {url = "mysql://root:password@dev_db:3306/homepage"}

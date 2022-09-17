@@ -1,0 +1,83 @@
+use super::schema::{blog, tag, blog_tags, user, role};
+
+#[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize)]
+#[table_name = "blog"]
+pub struct BlogEntry {
+    pub id: i32,
+    pub title: String,
+    pub author: String,
+    pub created: Option<chrono::NaiveDateTime>,
+    pub last_updated: Option<chrono::NaiveDate>,
+    pub content: Option<String>,
+}
+
+#[derive(serde::Serialize, Queryable, Identifiable, Debug)]
+#[table_name="tag"]
+pub struct Tag {
+    pub id: i32,
+    pub name: String,
+}
+
+#[derive(serde::Serialize, Queryable, Associations, Identifiable, Debug, serde::Deserialize)]
+#[table_name = "blog_tags"]
+#[belongs_to(BlogEntry, foreign_key = "blog_id")]
+#[belongs_to(Tag)]
+pub struct BlogTags {
+    pub id: i32,
+    pub blog_id: i32,
+    pub tag_id: i32
+}
+
+#[derive(Insertable, serde::Deserialize)]
+#[table_name="blog_tags"]
+pub struct NewBlogTag {
+    pub blog_id: i32,
+    pub tag_id: i32
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Identifiable, Queryable, Associations, PartialEq, Debug)]
+#[table_name="user"]
+#[belongs_to(Role, foreign_key = "role")]
+pub struct User {
+    pub id: i32,
+    pub email: String,
+    pub phc: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub role: i32,
+    pub active: bool,
+    pub last_access: Option<chrono::NaiveDate>,
+}
+
+#[derive(Insertable, serde::Deserialize, Queryable, Debug)]
+#[table_name="user"]
+pub struct NewUser {
+    pub email: String,
+    pub phc: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub role: i32,
+    pub active: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Identifiable, Queryable, PartialEq, Debug)]
+#[table_name="role"]
+pub struct Role {
+    pub id: i32,
+    pub user_role: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct JWTClaims {
+    pub email: String,
+    pub role_id: i32,
+    pub role: String,
+    pub exp: usize
+}
+
+use rocket::serde::Deserialize;
+#[derive(Deserialize, Debug)]
+#[serde(crate = "rocket::serde")]
+pub struct EnvVariables {
+    pub jwt_secret: String,
+}
