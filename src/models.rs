@@ -69,6 +69,7 @@ pub struct Role {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct JWTClaims {
+    pub user_id: i32,
     pub email: String,
     pub role_id: i32,
     pub role: String,
