@@ -30,6 +30,7 @@ TODO: Key should be disgarded and regenerated every 24 hours.
 
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 struct Claims {
+    user_id: i32,
     email: String,
     role_id: i32,
     role: String,
@@ -37,7 +38,7 @@ struct Claims {
 }
 
 
-pub fn get_jwt(user_email: String, role_id: i32, user_role: String, secret: &[u8] ) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn get_jwt(user_id: i32, user_email: String, role_id: i32, user_role: String, secret: &[u8] ) -> Result<String, jsonwebtoken::errors::Error> {
     //let figment = rocket::figment::Figment::from(rocket::Config::default());
     //let secret = figment.extract_inner("jwt_secret").expect("ROCKET_JWT_SECRET env value was not found.");
 
@@ -47,6 +48,7 @@ pub fn get_jwt(user_email: String, role_id: i32, user_role: String, secret: &[u8
         .expect("failed to make jwt expiration.")
         .timestamp(); //Returns the number of non-leap seconds since January 1, 1970 0:00:00 UTC (aka “UNIX timestamp”).
     let claims = Claims {
+        user_id: user_id,
         email: user_email.clone(),
         role_id: role_id,
         role: user_role.clone(),
