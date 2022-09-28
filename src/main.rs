@@ -73,7 +73,8 @@ fn rocket() -> _ {
         .mount("/user", routes![
             add_user, 
             delete_user, 
-            update_user
+            update_user,
+            get_user
         ])
             .register("/user", catchers![
                 dup_entry

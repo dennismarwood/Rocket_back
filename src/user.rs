@@ -11,7 +11,7 @@ use diesel::*;
 //use crate::index::home;
 
 pub mod routes {
-    use crate::auth::Level1;
+    use crate::auth::{Level1, ValidSession};
     use super::*;
 
     #[catch(422)]
@@ -60,9 +60,45 @@ pub mod routes {
             .execute(c)
         }).await {
         Ok(_) => return Ok(Status::NoContent),
-        Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("Failed to updat the user. {}", e)))),
+        Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("Failed to update the user. {}", e)))),
       }  
     } 
+
+    #[get("/")]
+    pub async fn get_user(conn:DbConn, user_id: ValidSession) -> (Status, Value) {
+        match conn.run(move |c: &mut MysqlConnection| {
+            user::table
+                .filter(user::id.eq(user_id.id))
+                .first::
+                    <(
+                        i32,
+                        Option<String>,
+                        Option<String>, 
+                        Option<String>, 
+                        Option<String>, 
+                        Option<chrono::NaiveDateTime>, 
+                        i32, 
+                        Option<bool>, 
+                        Option<chrono::NaiveDate> 
+                    )>(c)
+            }).await
+        {
+            Ok(entry) => return (Status::Ok, json!(entry)),
+            Err(e) => {
+                return (Status::InternalServerError, 
+                    json!({
+                        "errors": [
+                            {
+                                "status": 500,
+                                "description": format!("{}", e)
+                            }
+                        ]
+                    })
+                )
+            },
+        };
+        //todo!("shh")
+    }
 
     #[post("/", format = "json", data="<new_user>")]
     pub async fn add_user(conn: DbConn, new_user: Json<CreateNewUser>, _x: Level1) -> Result<Status, Status> {
