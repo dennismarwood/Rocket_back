@@ -1,0 +1,11 @@
+/target
+/docker_target
+/.git
+Cargo.lock
+**/s-gc9xqcbz1r-eqgxzp.lock
+/migrations
+.dockerignore
+.gitignore
+Notes.txt
+development.Dockerfile
+release.Dockerfile
