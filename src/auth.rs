@@ -85,3 +85,27 @@ impl<'r> FromRequest <'r> for Level1 {
         }
     }
 }
+
+pub struct ValidSession{
+    pub id: i32,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest <'r> for ValidSession {
+    type Error = ();
+
+    async fn from_request(request: &'r Request<'_>) -> Outcome<ValidSession, Self::Error> {
+        let secret = request.rocket().state::<EnvVariables>().unwrap().jwt_secret.clone();
+        match request.cookies().get("jwt") 
+        {
+            Some(unvalidated_jwt) => {
+                match validate_jwt(unvalidated_jwt.value(), secret.as_ref()) 
+                {
+                    Ok(claims) => Outcome::Success(ValidSession{id: claims.user_id}),
+                    Err(_) => {println!("You had a jwt but it was invalid");Outcome::Failure((Status::Unauthorized, ()))},
+                }
+            },
+            None => {println!("\nYou did not have a jwt");return Outcome::Failure((Status::Unauthorized, ()))},
+        }
+    }
+}
