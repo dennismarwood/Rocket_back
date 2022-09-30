@@ -40,12 +40,13 @@ pub struct NewBlogTag {
 #[belongs_to(Role, foreign_key = "role")]
 pub struct User {
     pub id: i32,
-    pub email: String,
+    pub email: Option<String>,
     pub phc: Option<String>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
+    pub created: Option<chrono::NaiveDateTime>,
     pub role: i32,
-    pub active: bool,
+    pub active: Option<bool>,
     pub last_access: Option<chrono::NaiveDate>,
 }
 
