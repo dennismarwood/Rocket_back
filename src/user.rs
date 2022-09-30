@@ -1,7 +1,7 @@
 use rocket::serde::json::{Json, Value, json};
 use diesel::prelude::*;
 use crate::config::DbConn;
-use crate::models::NewUser;
+use crate::models::{NewUser, User};
 use crate::schema::{user};
 use crate::pw::get_phc;
 use rocket::http::{Status};
@@ -63,27 +63,25 @@ pub mod routes {
         Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("Failed to update the user. {}", e)))),
       }  
     } 
-
+    
     #[get("/")]
     pub async fn get_user(conn:DbConn, user_id: ValidSession) -> (Status, Value) {
         match conn.run(move |c: &mut MysqlConnection| {
             user::table
                 .filter(user::id.eq(user_id.id))
-                .first::
-                    <(
-                        i32,
-                        Option<String>,
-                        Option<String>, 
-                        Option<String>, 
-                        Option<String>, 
-                        Option<chrono::NaiveDateTime>, 
-                        i32, 
-                        Option<bool>, 
-                        Option<chrono::NaiveDate> 
-                    )>(c)
+                .first::<User>(c)
             }).await
         {
-            Ok(entry) => return (Status::Ok, json!(entry)),
+            Ok(entry) => {
+                //Convert user object into json. Convert that json into a serde_json map.
+                //Remove an element from the map.
+                //Convert the map back into json.
+                let mut map: serde_json::Map<String, Value> = serde_json::from_value(json!(entry)).unwrap();
+                map.remove("phc");
+                let entry = json!(map);
+                
+                return (Status::Ok, entry)
+            },
             Err(e) => {
                 return (Status::InternalServerError, 
                     json!({
