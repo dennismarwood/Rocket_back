@@ -6,7 +6,9 @@ use crate::schema::{user};
 use crate::pw::get_phc;
 use rocket::http::{Status};
 use rocket::response::status;
+use rocket::Request;
 use diesel::*;
+use crate::jsonapi::JSONAPIError;
 //use rocket::response::Redirect;
 //use crate::index::home;
 
@@ -17,6 +19,29 @@ pub mod routes {
     #[catch(422)]
     pub fn dup_entry() -> Value {
         json!(format!("Ensure email is unique and role is valid."))
+    }
+
+
+    #[catch(default)]
+    pub fn catch_all(status: Status, _req: &Request) -> Value {
+        let message = &mut JSONAPIError{
+            status: status.code.to_string(), 
+            canonical: String::from(status.reason().unwrap()), 
+            title: String::from(""),
+            detail: String::from("")};
+        
+        match status.code {
+            401 => {
+                message.title = String::from("Session token missing or invalid.");
+                message.detail = String::from("The JWT is not present or is no longer valid.");
+            }
+            _ => {
+                message.title = String::from("A error was generated but it had an unantacipated code.");
+                message.detail = String::from("The back end of the application generated an unexpected non 200 response.");
+            }
+        }
+        
+        json!({"errors": vec![message]})
     }
 
     #[derive(serde::Deserialize)]
@@ -95,7 +120,6 @@ pub mod routes {
                 )
             },
         };
-        //todo!("shh")
     }
 
     #[post("/", format = "json", data="<new_user>")]

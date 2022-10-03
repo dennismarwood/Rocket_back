@@ -8,6 +8,7 @@ mod auth;
 mod pw;
 mod jwt;
 mod blog_tags;
+mod jsonapi;
 
 mod api;
 use api::*;
@@ -77,7 +78,8 @@ fn rocket() -> _ {
             get_user
         ])
             .register("/user", catchers![
-                dup_entry
+                dup_entry,
+                catch_all
             ])
         .attach(DbConn::fairing())
         .attach(AdHoc::config::<EnvVariables>())
