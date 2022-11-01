@@ -1,4 +1,39 @@
 use super::schema::{blog, tag, blog_tags, user, role};
+use rocket::serde::json::{Value};
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct ErrorResponse {
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct PayloadResponse {
+    pub payload: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct InformationalResponse {
+    pub message: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct MyResponse {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub payloads: Vec<Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub information:Vec<InformationalResponse>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<ErrorResponse>,
+}
+
+impl MyResponse {
+    pub fn new() -> Self {
+        MyResponse {errors: vec![], information: vec![], payloads: vec![]}
+    }
+}
 
 #[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize)]
 #[table_name = "blog"]
