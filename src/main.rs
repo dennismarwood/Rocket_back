@@ -8,7 +8,7 @@ mod auth;
 mod pw;
 mod jwt;
 mod blog_tags;
-mod jsonapi;
+mod myjsonapi;
 
 mod api;
 use api::*;
@@ -35,8 +35,23 @@ mod session;
 use session::routes::*;
 
 use models::EnvVariables;
+
+use rocket_cors::{AllowedHeaders, AllowedOrigins};
+use rocket::http::Method;
+
 #[launch]
 fn rocket() -> _ {
+    //let allowed_origins = AllowedOrigins::all();
+    let allowed_origins = AllowedOrigins::some_regex(&["^vscode-webview://(.+)"]);
+    let cors = rocket_cors::CorsOptions {
+        allowed_origins,
+        allowed_methods: vec![Method::Get].into_iter().map(From::from).collect(),
+        allowed_headers: AllowedHeaders::some(&["Authorization", "Accept"]),
+        allow_credentials: true,
+        ..Default::default()
+    }
+    .to_cors().unwrap();
+
     rocket::build()
         .mount("/", routes![home])
         .mount("/api", routes![api_info])
@@ -75,7 +90,8 @@ fn rocket() -> _ {
             add_user, 
             delete_user, 
             update_user,
-            get_user
+            get_user,
+            patch_user
         ])
             .register("/user", catchers![
                 dup_entry,
@@ -83,4 +99,5 @@ fn rocket() -> _ {
             ])
         .attach(DbConn::fairing())
         .attach(AdHoc::config::<EnvVariables>())
+        .attach(cors)
 }
