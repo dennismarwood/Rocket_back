@@ -1,0 +1,204 @@
+openapi: '3.0.1'
+# Cors issue in vs code - https://dzhavat.github.io/2020/11/12/easy-way-to-debug-a-webview-in-a-vscode-extension.html
+# https://github.com/42Crunch/vscode-openapi/issues/129
+info:
+  title: DennisMarwood.com
+  description: CRUD blog entries for homepage.
+  contact:
+      name: Dennis Marwood,
+      url: https://dennismarwood.com/contact,
+      email: dennismarwood@gmail.com
+  version: '1.0'
+  #license:
+    #name: 
+    #url:
+servers: #Check on passing in a variable here
+  - url: http://127.0.0.1:8001/api
+    description: Dev Back
+paths:
+  /tags:
+    get:
+      summary: Return a list of blog tags.
+      description: Use the start and step parameters to get tags.
+      operationId: listTagsV1
+      tags:
+        - tags      
+      parameters:
+        - $ref: "#/components/parameters/ListStartParam"
+        - $ref: "#/components/parameters/ListStepParam"              
+      responses:
+        '200':
+          description: A list of tags. The list may be empty.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payloads:
+                    type: array
+                    items: {  
+                      type: array,
+                      items: {
+                        type: string,
+                        $ref: "#/components/schemas/blog_tag"
+                      }
+                    }
+                  # type: object
+                  # schema:
+                  #   items:
+                  #     type: array
+                  #     $ref: "#/components/schemas/payload"
+                  #     schema:
+                  #       tags:
+                  #       description: A list of tags. The list may be empty.
+                  #       type: array 
+                  #       items:
+                  #         type: string
+                  #         $ref: "#/components/schemas/blog_tag" 
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                $ref: "#/components/schemas/error"
+    put: 
+      responses:
+        '200':
+          description: '200'
+      deprecated: false
+  /customers:
+    get:
+      responses:
+        '200':
+          description: List of Customers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/customer_list"
+                      
+components:
+  parameters:
+    ListStartParam:
+      name: start
+      in: query
+      description: 
+        "
+        Works in conjunction with the ListStepParam.<br>
+        Items returned = (start * step) + step.<br>
+        Assume the query orders by item_id ascending.<br>
+        For example: You provide a start of 0 and a step of 10. A list of 
+        the 'first' ten items will be returned. A start of 2 and a step of 3 would 
+        return a list of 3 items returned at the 6th - 8th places.<br>
+        Start and Step combinations that query up to and beyond the available entries
+        are valid. In such query a 'short' or empty list will be returned.
+        "
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+        maximum: 100
+      required: true
+      allowEmptyValue: false
+    ListStepParam:
+      name: step  
+      in: query
+      description:         
+        "
+        See the ListStartParam description.
+        "
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+      required: true
+      allowEmptyValue: false
+  schemas:
+    error:
+      description: An error occured. Some data may be provided below.
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+              default: 0
+            message:
+              type: string
+              default: "Could not provide the error message."
+    payload:
+      description: A list of query results.
+      type: object
+      example: "payloads"
+      properties:
+        payloads:
+          type: array
+    blog_tag_payload:
+      description: A list of 
+    blog_tag:
+      description: A short description of a topic.
+      type: object
+      example: {"id": 0, "name": "Rust"}
+      properties:
+        id:
+          description: The unique identifier for this object.
+          type: integer
+          example: 3
+          minimum: 0
+          maximum: 255
+        name:
+          description: The description of a topic. Must be unique. First letters of each word will be uppercased. 
+          type: integer
+          example: 4
+          minimum: 0
+          maximum: 255
+    address:
+      type: object
+      properties:
+        line1:
+          type: string
+          example: 123 Main St
+        city:
+          type: string
+          example: Home Town
+        zipcode:
+          type: string
+          example: '12345'
+        state:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: 2 letter state code
+          # enum: [AL, AK, CA]
+          enum:
+            - AL
+            - AK
+            - AZ
+            - AR
+            - CA
+    customer:                  
+      type: object
+      description: Customer object
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: John
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: Smith
+        address:
+          $ref: "#/components/schemas/address"
+    customer_list:
+      type: array
+      minItems: 1
+      maxItems: 100
+      description: List of Customers
+      items:
+        $ref: "#/components/schemas/customer"
