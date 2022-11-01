@@ -1,6 +1,6 @@
 use crate::config::DbConn;
 use crate::schema::{tag, blog_tags};
-use crate::models::{Tag};
+use crate::models::{Tag, MyResponse};
 use diesel::prelude::*;
 use rocket::serde::json::{Json, Value, json};
 use rocket::http::{Status};
@@ -9,32 +9,47 @@ use rocket::response::status;
 pub mod routes {
     //use crate::auth::auth::Level1;
 
+    //use diesel::result::Error;
+
+    use crate::models::{ErrorResponse};
+
     use super::*;
 
     #[get("/?<start>&<step>")]
-    pub async fn get_tags(start: i64, step: i64, conn: DbConn) -> Result< Value, status::Custom<Value>> {
+    pub async fn get_tags(start: u8, step: u8, conn: DbConn) -> Value {
+        //let mut response = MyResponse {errors: vec![], information: vec![], payloads: vec![]};
+        let mut response = MyResponse::new();
         match conn.run(move |c| {
             tag::table
-            .limit(step)
-            .offset(start)
+            .limit(step.try_into().unwrap())
+            .offset(start.try_into().unwrap())
             .load::<Tag>(c)
         }).await {
-            Ok(tags) => return Ok(json!(tags)),
-            Err(e) => Err(status::Custom(Status::InternalServerError , json!(format!("{}", e)))),
+            Ok(tags) => 
+                //return Ok(json!({"payload": tags}));
+                response.payloads.push(json!(tags)), 
+
+            Err(e) => 
+                //status::Custom(Status::InternalServerError , json!(format!("{}", e)))
+                response.errors.push(ErrorResponse { code: Status::InternalServerError.to_string(), message: e.to_string() }),
         }
+        //response.information.push(InformationalResponse { message: "Here is some info".to_string() });
+        json!(&response)
     }
 
     #[get("/?<id>", rank = 1)]
-    pub async fn get_tag_by_id(id: i32, conn: DbConn) -> Result< Value, status::Custom<Value>> {
+    pub async fn get_tag_by_id(id: i32, conn: DbConn) -> Value {
+        let mut response = MyResponse::new();
         match conn.run(move |c|  {
             tag::table
             .filter(tag::id.eq(id))
             .select(tag::name)
             .first::<String>(c)
         }).await {
-            Ok(tag) => return Ok(json!(tag)),
-            Err(e) => return Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
+            Ok(tags) => response.payloads.push(json!(tags)),
+            Err(e) => response.errors.push(ErrorResponse { code: Status::NoContent.to_string(), message: e.to_string() }),
         }
+        json!(&response)
     }
 
     #[get("/?<name>", rank = 2)]
