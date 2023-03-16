@@ -28,7 +28,7 @@ paths:
         - $ref: "#/components/parameters/ListStepParam"              
       responses:
         '200':
-          description: A list of tags. The list may be empty.
+          description: A list of tags.
           content:
             application/json:
               schema:
@@ -43,24 +43,93 @@ paths:
                         $ref: "#/components/schemas/blog_tag"
                       }
                     }
-                  # type: object
-                  # schema:
-                  #   items:
-                  #     type: array
-                  #     $ref: "#/components/schemas/payload"
-                  #     schema:
-                  #       tags:
-                  #       description: A list of tags. The list may be empty.
-                  #       type: array 
-                  #       items:
-                  #         type: string
-                  #         $ref: "#/components/schemas/blog_tag" 
+        '204':
+          description: 'The search parameters yielded zero results'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/204_error"
         default:
           description: An error has occured.
           content:
             application/json:
               schema: 
-                $ref: "#/components/schemas/error"
+                $ref: "#/components/schemas/server_error"
+  /tags/{tagID}:
+    get:
+      summary: Return a tag matching the provided id.
+      description: Given an id for a tag return that tag.
+      operationId: listTagsV1
+      tags:
+        - tags
+      parameters:
+        - $ref: "#/components/parameters/TagIdPathParam"
+      responses:
+        '200':
+          description: 'A single tag name is returned'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payloads:
+                    type: array
+                    items: {
+                        type: string,
+                        $ref: "#/components/schemas/blog_tag"
+                    }
+        '404':
+          description: 'No tag with that id exists.'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/404_error"
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                $ref: "#/components/schemas/server_error"
+    put: 
+      responses:
+        '200':
+          description: '200'
+      deprecated: false
+  /tags/{tagName}:
+    get:
+      summary: Return the tag id matching the provided name.
+      description: Given a name for a tag return that tag's id.
+      operationId: listTagsV1
+      tags:
+        - tags
+      parameters:
+        - $ref: "#/components/parameters/TagIdPathParam"
+      responses:
+        '200':
+          description: 'A single tag id is returned'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payloads:
+                    type: array
+                    items: {
+                        type: integer                        
+                    }
+                    example: [1]
+        '404':
+          description: 'No tag with that name exists.'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/404_error"
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                $ref: "#/components/schemas/server_error"
     put: 
       responses:
         '200':
@@ -112,8 +181,24 @@ components:
         minimum: 0
       required: true
       allowEmptyValue: false
+    TagIdPathParam:
+      name: tagID
+      in: path
+      description:
+        Tag ID
+      required: true
+      schema:
+        type: integer
+    TagNamePathParam:
+      name: tagName
+      in: path
+      description:
+        Tag Name
+      required: true
+      schema:
+        type: string
   schemas:
-    error:
+    server_error:
       description: An error occured. Some data may be provided below.
       type: object
       properties:
@@ -126,6 +211,32 @@ components:
             message:
               type: string
               default: "Could not provide the error message."
+    204_error:
+      description: The provided query parameter(s) yielded zero results.
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+              default: 204
+            message:
+              type: string
+              default: "The URI format was valid but the provided query parameters yielded zero results."
+    404_error:
+      description: The specified URI does not exist.
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+              default: 404
+            message:
+              type: string
+              default: "The specified URI does not exist because the item id was not found."
     payload:
       description: A list of query results.
       type: object

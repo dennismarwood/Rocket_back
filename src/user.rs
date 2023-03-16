@@ -8,9 +8,11 @@ use rocket::http::{Status};
 use rocket::response::status;
 use rocket::Request;
 use diesel::*;
-use crate::jsonapi::JSONAPIError;
+use rocket::form::Form;
+use crate::myjsonapi::{JSONAPIError, JSONAPIPatch};
 //use rocket::response::Redirect;
 //use crate::index::home;
+//#[macro_use] extern crate serde_derive;
 
 pub mod routes {
     use crate::auth::{Level1, ValidSession};
@@ -54,7 +56,7 @@ pub mod routes {
         pub active: bool,
     }
 
-    #[derive(serde::Deserialize, AsChangeset)]
+    #[derive(Debug, FromForm, serde::Deserialize, AsChangeset)]
     #[table_name ="user"]
     pub struct UpdateUser {
         pub email : Option<String>,
@@ -64,10 +66,26 @@ pub mod routes {
         pub role: Option<i32>,
         pub active: Option<bool>,
     }
+    #[patch("/", format="form", data="<updated_user>")]
+    pub async fn _patch_user_form(updated_user: Form<UpdateUser>) -> Value {
+        /* 
+        Data could be sent into the backend with key value tuples described here:https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST
+        Reqwests does send data in that format if specified: https://docs.rs/reqwest/latest/reqwest/struct.RequestBuilder.html#method.form 
+        However, I want this backend to only respond to application/json type reqeusts.
+        Keeping this in place as an exemple of a way this (or the frontend) may want to pass data around to itself.
+        */
+        //println!("patch_user not implimented for the content-type:application/x-www-form-urlencoded. {:?}", updated_user);
+        todo!("\n\npatch_user not implimented for the content-type:application/x-www-form-urlencoded. {:?}", updated_user)
+    }
 
-    //Because all fields are optional, it is expceted to use patch here.
+    #[patch("/", format="json", data="<updated_user>")]
+    pub async fn patch_user(updated_user: Json<UpdateUser>) -> Value {
+        todo!()
+    }
+
     #[patch("/<id>", format = "json", data="<updated_user>")]
     pub async fn update_user(id: i32, conn: DbConn, mut updated_user: Json<UpdateUser>, _x: Level1) -> Result<Status, status::Custom<Value>> {
+        println!("HERE IS THE PATCH");
         //TODO: Updating a pw should invalidate this user's jwt. We should update user fields, invalidate jwt (not implemented), then give them a new jwt.
         //If a new pw was sent, calculate phc first.
         if updated_user.phc.is_some() {

@@ -27,8 +27,10 @@ pub mod routes {
         }).await {
             Ok(tags) => 
                 //return Ok(json!({"payload": tags}));
-                response.payloads.push(json!(tags)), 
-
+                match tags.len() {
+                    1.. => response.payloads.push(json!(tags)),
+                    _ => response.errors.push(ErrorResponse { code: Status::NoContent.to_string(), message: "The URI format was valid but the provided query parameters yielded zero results.".to_string() }),
+                }
             Err(e) => 
                 //status::Custom(Status::InternalServerError , json!(format!("{}", e)))
                 response.errors.push(ErrorResponse { code: Status::InternalServerError.to_string(), message: e.to_string() }),
@@ -37,7 +39,7 @@ pub mod routes {
         json!(&response)
     }
 
-    #[get("/?<id>", rank = 1)]
+    #[get("/<id>")]
     pub async fn get_tag_by_id(id: i32, conn: DbConn) -> Value {
         let mut response = MyResponse::new();
         match conn.run(move |c|  {
@@ -47,41 +49,25 @@ pub mod routes {
             .first::<String>(c)
         }).await {
             Ok(tags) => response.payloads.push(json!(tags)),
-            Err(e) => response.errors.push(ErrorResponse { code: Status::NoContent.to_string(), message: e.to_string() }),
+            Err(_) => response.errors.push(ErrorResponse { code: Status::NotFound.to_string(), message: "The specified URI does not exist because the item id was not found.".to_string() }),
         }
         json!(&response)
     }
 
-    #[get("/?<name>", rank = 2)]
-    pub async fn get_tag_by_name(name: String, conn: DbConn) -> Result< Value, status::Custom<Value>> {
+    #[get("/?<name>")]
+    pub async fn get_tag_by_name(name: String, conn: DbConn) -> Value {
+        let mut response = MyResponse::new();
         match conn.run(move |c|  {
             tag::table
             .filter(tag::name.eq(name))
             .select(tag::id)
             .first::<i32>(c)
         }).await {
-            Ok(tag) => return Ok(json!(tag)),
-            Err(e) => return Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
+            Ok(tags) => response.payloads.push(json!(tags)),
+            Err(_) => response.errors.push(ErrorResponse { code: Status::NotFound.to_string(), message: "The specified URI does not exist because the item name was not found.".to_string() }),
         }
+        json!(&response)
     }
-
-    #[get("/?<blog_id>", rank = 3)]
-    pub async fn get_tags_on_post(blog_id: i32, conn: DbConn) -> Result< Value, status::Custom<Value>> {
-        match conn.run(move |c| {
-            blog_tags::table
-            .inner_join(tag::table)
-            .filter(blog_tags::blog_id.eq(blog_id))
-            .select((tag::id, tag::name))
-            .load::<Tag>(c)
-            }).await
-        {
-            Ok(results) => return Ok(json!(results)),
-            Err(e) => return Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
-        }
-    }
-    /*#[get("/tag?<name>")]
-    pub async fn get_tags(name: String, conn: DbConn) -> Value {}
- */
 
     #[derive(Debug, Insertable, serde::Deserialize)]
     #[table_name="tag"]
@@ -111,6 +97,20 @@ pub mod helper {
         }).await
     }
 
+    pub async fn get_tags_on_post(blog_id: i32, conn: DbConn) -> Result< Value, status::Custom<Value>> {
+        match conn.run(move |c| {
+            blog_tags::table
+            .inner_join(tag::table)
+            .filter(blog_tags::blog_id.eq(blog_id))
+            .select((tag::id, tag::name))
+            .load::<Tag>(c)
+            }).await
+        {
+            Ok(results) => return Ok(json!(results)),
+            Err(e) => return Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
+        }
+    }
+    
     pub async fn add_tag(conn: &DbConn, mut new_tags: Vec<String>) -> Result< usize, diesel::result::Error> {
         //The tag.name column has a unique constraint on it. Any duplicates passed into it with the ".values"
         //will cause all the entries to fail.

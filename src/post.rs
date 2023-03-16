@@ -2,7 +2,7 @@ use rocket::serde::json::{Json, Value, json};
 use crate::schema::{blog, blog_tags, tag};
 use diesel::prelude::*;
 use crate::config::DbConn;
-use crate::tag::helper::{add_tag};
+use crate::tag::helper::{add_tag, get_tags_on_post};
 use crate::blog_tags::*;
 use rocket::http::{Status};
 use rocket::response::status;
@@ -17,6 +17,21 @@ pub mod routes {
 
     #[get("/<id>")]
     pub async fn get_post_by_id(id: i32, conn: DbConn) -> Result< Value, status::Custom<Value>> {
+        match conn.run(move |c| {
+            blog::table
+                .filter(blog::id.eq(id))
+                .load::<BlogEntry>(c)
+            }).await
+        {
+            Ok(entry) => {
+                let x = get_blog_entries_and_tags(&conn, entry).await;
+                return Ok(json!(x))},
+            Err(e) => Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
+        }
+    }
+
+    #[get("/<id>/tags")]
+    pub async fn get_tags_on_post(id: i32, conn: DbConn) -> Result< Value, status::Custom<Value>> {
         match conn.run(move |c| {
             blog::table
                 .filter(blog::id.eq(id))

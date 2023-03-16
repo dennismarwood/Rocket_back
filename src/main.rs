@@ -58,12 +58,12 @@ fn rocket() -> _ {
         .mount("/api/tags", routes![
             get_tags,
             get_tag_by_id,
-            get_tag_by_name,
-            get_tags_on_post,
+            //get_tag_by_name,
             add_tag
         ])
         .mount("/api/posts", routes![
-            get_post_by_id, 
+            get_post_by_id,
+            get_tags_on_post,
             get_post_by_title,
             get_post_by_author, 
             get_post_by_tags,

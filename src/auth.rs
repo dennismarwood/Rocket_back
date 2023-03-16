@@ -4,7 +4,7 @@ use crate::jwt::{validate_jwt};
 use crate::models::EnvVariables;
 use rocket::serde::json::{Json, Value, json};
 use rocket::response::status;
-use crate::jsonapi::JSONAPIError;
+use crate::myjsonapi::JSONAPIError;
 
 
 /* 
