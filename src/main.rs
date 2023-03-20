@@ -1,7 +1,11 @@
 #[macro_use] extern crate rocket;
 #[macro_use] extern crate diesel;
 use rocket::fairing::AdHoc;
+use rocket_cors::{AllowedHeaders, AllowedOrigins};
+use rocket::http::Method;
+use rocket::fs::{FileServer, NamedFile, relative};
 
+//use rocket_contrib::serve::StaticFiles;
 mod models;
 mod schema;
 mod auth;
@@ -36,13 +40,21 @@ use session::routes::*;
 
 use models::EnvVariables;
 
-use rocket_cors::{AllowedHeaders, AllowedOrigins};
-use rocket::http::Method;
+#[get("/openapi_yml")]
+async fn openapi_yml() -> Option<NamedFile> {
+    NamedFile::open("src/homepage.yml").await.ok()
+}
+
+#[get("/openapi_index")]
+async fn openapi_index() -> Option<NamedFile> {
+    NamedFile::open("static/3rd_party/swagger-ui-4.18.1/dist/index.html").await.ok()
+}
 
 #[launch]
 fn rocket() -> _ {
     //let allowed_origins = AllowedOrigins::all();
     let allowed_origins = AllowedOrigins::some_regex(&["^vscode-webview://(.+)"]);
+    //let allowed_origins = AllowedOrigins::some_null();
     let cors = rocket_cors::CorsOptions {
         allowed_origins,
         allowed_methods: vec![Method::Get].into_iter().map(From::from).collect(),
@@ -52,8 +64,12 @@ fn rocket() -> _ {
     }
     .to_cors().unwrap();
 
+
     rocket::build()
-        .mount("/", routes![home])
+        //.mount("/my_path", StaticFiles::from("/www/public"))
+        //.mount("/openapi", FileServer::from("/static/3rd_party/swagger-ui-4.18.1/dist"))
+        .mount("/openapi", FileServer::from(relative!("/static/3rd_party/swagger-ui-4.18.1/dist")))
+        .mount("/", routes![home, openapi_yml])
         .mount("/api", routes![api_info])
         .mount("/api/tags", routes![
             get_tags,
