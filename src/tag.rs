@@ -5,15 +5,166 @@ use diesel::prelude::*;
 use rocket::serde::json::{Json, Value, json};
 use rocket::http::{Status};
 use rocket::response::status;
+use std::collections::HashMap;
+
 
 pub mod routes {
     //use crate::auth::auth::Level1;
 
     //use diesel::result::Error;
 
+    //use core::num::dec2flt::parse;
+
+    use std::iter;
+
+    use diesel::mysql::Mysql;
+
     use crate::models::{ErrorResponse};
 
     use super::*;
+
+    //    http://localhost:8000  /tags?start=0&step=10&filters[]=id=5&filters[]=name=Rust
+    //http://localhost:8001/api/tags/test/?start=0&step=10&dbfilter[filters][]=id=5&dbfilter[filters][]=name=Rust
+    #[derive(Debug, FromForm, Clone)]
+    pub struct Filter {
+        filters: Option<Vec<String>>,
+    }
+    
+    #[derive(Debug, FromForm, Clone)]
+    pub struct QParams {
+        start: Option<i64>,
+        step: Option<i64>,
+        //See inner_join to handle queries that need data from other tables.
+        //select: Option<Vec<String>>, 
+        filter: Option<Vec<String>>, //filter=author=Dennis
+        order: Option<Vec<String>> //order_by=-created&order_by= //NOTE: SEE order_by and the .desc() option
+        //group_by: Option<Vec<String>>
+    }
+
+    pub enum Tables {
+        Tag,
+    }
+    
+    pub async fn parse_and_query(table: Tables, params: QParams, conn: DbConn){
+        
+        match conn.run(move |c|  {
+
+            let mut query = match table {
+                Tables::Tag => tag::table.into_boxed::<Mysql>(),
+            }; 
+
+            //order
+            query = query.then_order_by(tag::id.asc());
+
+            //filters  https://docs.diesel.rs/2.0.x/diesel/prelude/trait.QueryDsl.html#method.filter
+            match params.filter {
+                Some(p) => {
+                    for f in p {
+                        if let Some((k, v)) = f.split_once('=').map(|(k, v)| (k.to_owned(), v.to_owned())) {
+                            match table {
+                                Tables::Tag => {
+                                    if k == "id" { 
+                                        query = query.or_filter(tag::id.eq(v.parse::<i32>().unwrap()))
+                                    }else if k == "name" {
+                                        query = query.or_filter(tag::name.eq(v)) 
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                None => {}
+            }
+
+            //order https://docs.diesel.rs/1.4.x/diesel/query_dsl/trait.QueryDsl.html#method.then_order_by
+            match params.order {
+                Some(p) => {
+                    for o in p {
+                        if let Some((k, v)) = o.split_once('=').map(|(k, v)| (k.to_owned(), v.to_owned())) {
+                            match table {
+                                Tables::Tag => {
+                                    if k == "id" {
+                                        query = query.then_order_by(tag::id.desc());
+                                    }else if k == "name" {
+                                        query = query.then_order_by(tag::name.desc());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                None => {}
+            }
+
+            if let Some(p) = params.order {
+                for o in &p {
+                    match o.as_str() {
+                        "id" => query = query.then_order_by(tag::id.asc()),
+                        "-id" => query = query.then_order_by(tag::id.desc()),
+                    }
+                }
+            }
+
+            //page indexing
+            let start: i64 = params.start.unwrap_or(0);
+            let step: i64 = params.step.unwrap_or(10);
+            query = query.limit(step);
+            query = query.offset(start);
+            query.load::<Tag>(c)
+            //query.select((tag::name, tag::id)).load::<(String, i32)>(c)
+
+        }).await {
+            Ok(tags) => println!("Here are the results: {:?}", tags ),
+            Err(_) => println!("Zero results"),
+        }
+    }
+
+    #[get("/?<params..>")]
+    pub async fn get_tags_test(params: QParams, conn: DbConn) {
+        //http://localhost:8001/api/tags/test/?start=0&step=10&dbfilter[filters][]=id=5&dbfilter[filters][]=name=Rust&myfilter=test=3&myfilter=test2=1&filter=id=46
+
+        parse_and_query(Tables::Tag, params, conn).await;
+        //match conn.run(move |c|  {
+            //parse_and_query(params, conn);
+            /*
+            tag::table
+            .or_filter(tag::id.eq(46))
+            .select(tag::name)
+            .first::<String>(c)
+            */
+        /* }).await {
+            Ok(tags) => println!("{}", tags ),
+            Err(_) => println!("Zero results"),
+        }*/
+    }
+        /*
+        parse_and_query(params.clone(), conn).await;
+        let r = "get_tags_test";
+        let start = params.start.unwrap_or(0) as i64;
+        let step = params.step.unwrap_or(10) as i64;
+        println!("dbfilter values = {:?}", &params.dbfilter);
+
+        let mut filters_map = HashMap::new();
+        if let Some(filter) = params.dbfilter {
+            if let Some(filters) = filter.filters {
+                for filter_pair in filters {
+                    let filter_parts: Vec<&str> = filter_pair.splitn(2, '=').collect();
+                    if filter_parts.len() == 2 {
+                        let column = filter_parts[0].trim();
+                        let value = filter_parts[1].trim();
+                        println!("{}", column.to_string());
+                        println!("{}", value.to_string());
+
+                        filters_map.insert(column.to_owned(), value.to_owned());
+                    }
+                }
+            }
+        }
+        */
+        //let mut my_filters_map = HashMap::new()
+
+        //format!("{}\nstart:{}\nstep:{}\n{:?}\n{:?}", r, start, step, filters_map, params.myfilter)
+    //}
 
     #[get("/?<start>&<step>")]
     pub async fn get_tags(start: u8, step: u8, conn: DbConn) -> Value {
