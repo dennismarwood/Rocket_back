@@ -34,73 +34,67 @@ pub mod routes {
     pub struct QParams {
         start: Option<i64>,
         step: Option<i64>,
-        //See inner_join to handle queries that need data from other tables.
-        //select: Option<Vec<String>>, 
         filter: Option<Vec<String>>, //filter=author=Dennis
-        order: Option<Vec<String>> //order_by=-created&order_by= //NOTE: SEE order_by and the .desc() option
-        //group_by: Option<Vec<String>>
+        order: Option<Vec<String>> 
+        //grouped_by: Use this to handle the data from many to 1 table relations
     }
 
     pub enum Tables {
         Tag,
     }
     
+    //pub async fn parse_and_query<T>(table: T, params: QParams, conn: DbConn)
+    //where
+        //T: Table,
+    //{
     pub async fn parse_and_query(table: Tables, params: QParams, conn: DbConn){
-        
         match conn.run(move |c|  {
 
             let mut query = match table {
                 Tables::Tag => tag::table.into_boxed::<Mysql>(),
             }; 
-
-            //order
-            query = query.then_order_by(tag::id.asc());
-
+            //let mut query = table.into_boxed::<Mysql>();
+            //READ UP ON https://docs.diesel.rs/1.4.x/diesel/expression/trait.BoxableExpression.html#examples
             //filters  https://docs.diesel.rs/2.0.x/diesel/prelude/trait.QueryDsl.html#method.filter
-            match params.filter {
-                Some(p) => {
-                    for f in p {
-                        if let Some((k, v)) = f.split_once('=').map(|(k, v)| (k.to_owned(), v.to_owned())) {
-                            match table {
-                                Tables::Tag => {
-                                    if k == "id" { 
-                                        query = query.or_filter(tag::id.eq(v.parse::<i32>().unwrap()))
-                                    }else if k == "name" {
-                                        query = query.or_filter(tag::name.eq(v)) 
-                                    }
+            //http://localhost:8001/api/tags/test/?start=0&step=10&order=-id&filter=id=79&filter=id=78
+            //like, between, eq, eq_any, ge, le
+            //filter=name=eq=Rust
+            //filter=name=like=Ru%
+            //filter[like]=name=Ru%
+            //filter[eq]=name=Rust
+            //Maybe break down the filters to calls of functions that build the query
+
+            if let Some(p_f) = params.filter {
+                for f in p_f {
+                    //f looks like "id=47"
+                    if let Some((k, v)) = f.split_once('=').map(|(k, v)| (k.to_owned(), v.to_owned())) {
+                        match table {
+                            Tables::Tag => {
+                                match k.as_str() {
+                                    "id" => query = query.or_filter(tag::id.eq(v.parse::<i32>().unwrap())),
+                                    "name" => query = query.or_filter(tag::name.eq(v)),
+                                    _ => {},
                                 }
                             }
                         }
                     }
                 }
-                None => {}
             }
 
             //order https://docs.diesel.rs/1.4.x/diesel/query_dsl/trait.QueryDsl.html#method.then_order_by
-            match params.order {
-                Some(p) => {
-                    for o in p {
-                        if let Some((k, v)) = o.split_once('=').map(|(k, v)| (k.to_owned(), v.to_owned())) {
-                            match table {
-                                Tables::Tag => {
-                                    if k == "id" {
-                                        query = query.then_order_by(tag::id.desc());
-                                    }else if k == "name" {
-                                        query = query.then_order_by(tag::name.desc());
-                                    }
-                                }
+            //asc, desc,
+            if let Some(p_o) = params.order {
+                for o in p_o {
+                    match table {
+                        Tables::Tag => {
+                            match o.as_str() {
+                                "id" => query = query.then_order_by(tag::id.asc()),
+                                "-id" => query = query.then_order_by(tag::id.desc()),
+                                "name" => query = query.then_order_by(tag::name.asc()),
+                                "-name" => query = query.then_order_by(tag::name.desc()),
+                                _ => {},
                             }
                         }
-                    }
-                }
-                None => {}
-            }
-
-            if let Some(p) = params.order {
-                for o in &p {
-                    match o.as_str() {
-                        "id" => query = query.then_order_by(tag::id.asc()),
-                        "-id" => query = query.then_order_by(tag::id.desc()),
                     }
                 }
             }
@@ -110,7 +104,11 @@ pub mod routes {
             let step: i64 = params.step.unwrap_or(10);
             query = query.limit(step);
             query = query.offset(start);
-            query.load::<Tag>(c)
+            match table {
+                Tables::Tag => {
+                    query.load::<Tag>(c)
+                }
+            }
             //query.select((tag::name, tag::id)).load::<(String, i32)>(c)
 
         }).await {
@@ -124,6 +122,8 @@ pub mod routes {
         //http://localhost:8001/api/tags/test/?start=0&step=10&dbfilter[filters][]=id=5&dbfilter[filters][]=name=Rust&myfilter=test=3&myfilter=test2=1&filter=id=46
 
         parse_and_query(Tables::Tag, params, conn).await;
+        //parse_and_query(tag::table, params, conn).await;
+        let x = tag::table;
         //match conn.run(move |c|  {
             //parse_and_query(params, conn);
             /*
