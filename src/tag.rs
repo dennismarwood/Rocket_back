@@ -5,96 +5,138 @@ use diesel::prelude::*;
 use rocket::serde::json::{Json, Value, json};
 use rocket::http::{Status};
 use rocket::response::status;
-use std::collections::HashMap;
 
 
 pub mod routes {
-    //use crate::auth::auth::Level1;
-
-    //use diesel::result::Error;
-
-    //use core::num::dec2flt::parse;
-
-    use std::iter;
-
     use diesel::mysql::Mysql;
-
     use crate::models::{ErrorResponse};
-
     use super::*;
 
-    //    http://localhost:8000  /tags?start=0&step=10&filters[]=id=5&filters[]=name=Rust
-    //http://localhost:8001/api/tags/test/?start=0&step=10&dbfilter[filters][]=id=5&dbfilter[filters][]=name=Rust
-    #[derive(Debug, FromForm, Clone)]
-    pub struct Filter {
-        filters: Option<Vec<String>>,
-    }
-    
     #[derive(Debug, FromForm, Clone)]
     pub struct QParams {
         start: Option<i64>,
         step: Option<i64>,
-        filter: Option<Vec<String>>, //filter=author=Dennis
+        filter: Filters,
         order: Option<Vec<String>> 
         //grouped_by: Use this to handle the data from many to 1 table relations
     }
 
-    pub enum Tables {
-        Tag,
+    #[derive(Debug, FromForm, Clone)]
+    pub struct Filters {
+        like: Option<Vec<String>>,
+        eq: Option<Vec<String>>,
+        ge: Option<Vec<String>>,
+        le: Option<Vec<String>>,
+        between: Option<Vec<String>>,
     }
-    
-    //pub async fn parse_and_query<T>(table: T, params: QParams, conn: DbConn)
-    //where
-        //T: Table,
-    //{
-    pub async fn parse_and_query(table: Tables, params: QParams, conn: DbConn){
+
+    pub enum TagFields {
+        Id(i32),
+        Name(String),
+    }
+
+    pub fn validation(qp: String) -> Option<TagFields> {
+        // Verify that the query parameter is valid in format
+        if let Some((k, v)) = qp.split_once('=') {
+            match k.to_lowercase().as_str() {
+                "id" => {
+                    match v.parse::<i32>() {
+                        Ok(v) => Some(TagFields::Id(v)),
+                        _ => None,
+                    }
+                },
+                "name" => Some(TagFields::Name(String::from(v))),
+                _ => None,
+            }
+        } else {None}
+    }
+
+    pub async fn parse_and_query(params: QParams, conn: DbConn){
+        //https://docs.diesel.rs/2.0.x/diesel/prelude/trait.QueryDsl.html#method.filter
         match conn.run(move |c|  {
 
-            let mut query = match table {
-                Tables::Tag => tag::table.into_boxed::<Mysql>(),
-            }; 
-            //let mut query = table.into_boxed::<Mysql>();
-            //READ UP ON https://docs.diesel.rs/1.4.x/diesel/expression/trait.BoxableExpression.html#examples
-            //filters  https://docs.diesel.rs/2.0.x/diesel/prelude/trait.QueryDsl.html#method.filter
-            //http://localhost:8001/api/tags/test/?start=0&step=10&order=-id&filter=id=79&filter=id=78
-            //like, between, eq, eq_any, ge, le
-            //filter=name=eq=Rust
-            //filter=name=like=Ru%
-            //filter[like]=name=Ru%
-            //filter[eq]=name=Rust
-            //Maybe break down the filters to calls of functions that build the query
-
-            if let Some(p_f) = params.filter {
-                for f in p_f {
-                    //f looks like "id=47"
-                    if let Some((k, v)) = f.split_once('=').map(|(k, v)| (k.to_owned(), v.to_owned())) {
-                        match table {
-                            Tables::Tag => {
-                                match k.as_str() {
-                                    "id" => query = query.or_filter(tag::id.eq(v.parse::<i32>().unwrap())),
-                                    "name" => query = query.or_filter(tag::name.eq(v)),
-                                    _ => {},
-                                }
-                            }
+            let mut query = tag::table.into_boxed::<Mysql>();
+            if let Some(eq) = params.filter.eq {
+                for f in eq {
+                    if let Some(query_parameter) = validation(f){
+                        match query_parameter {
+                            TagFields::Id(id) => query = query.or_filter(tag::id.eq(id)),
+                            TagFields::Name(name) => query = query.or_filter(tag::name.eq(name)),
                         }
                     }
                 }
             }
 
-            //order https://docs.diesel.rs/1.4.x/diesel/query_dsl/trait.QueryDsl.html#method.then_order_by
-            //asc, desc,
+            if let Some(ge) = params.filter.ge {
+                for f in ge {
+                    if let Some(query_parameter) = validation(f){
+                        match query_parameter {
+                            TagFields::Id(id) => query = query.or_filter(tag::id.ge(id)),
+                            TagFields::Name(name) => query = query.or_filter(tag::name.ge(name)),
+                        }
+                    }
+                }
+            }
+
+            if let Some(le) = params.filter.le {
+                for f in le {
+                    if let Some(query_parameter) = validation(f){
+                        match query_parameter {
+                            TagFields::Id(id) => query = query.or_filter(tag::id.le(id)),
+                            TagFields::Name(name) => query = query.or_filter(tag::name.le(name)),
+                        }
+                    }
+                }
+            }
+
+            if let Some(like) = &params.filter.like{
+                for f in like {
+                    if let Some((k, v)) = f.split_once('=') {
+                        match k.to_lowercase().as_str() {
+                            "name" => query = query.or_filter(tag::name.like(v)),
+                            _ => {},
+                        }
+                    }
+                }
+            }
+            
+            if let Some(between) = &params.filter.between {
+                for b in between {
+                    if let Some((k, v)) = b.split_once('=') {
+                        match k.to_lowercase().as_str() {
+                            "id" => {
+                                if let Some((l, r)) = v.split_once(',') {
+                                    match l.parse::<i32>() {
+                                        Ok(l) => {
+                                            match r.parse::<i32>() {
+                                                Ok(r) => query = query.or_filter(tag::id.between(l, r)),
+                                                _ => {},
+                                            }
+                                        },
+                                        _ => {},
+                                    }
+                                }
+                            }, 
+                            "name" => {
+                                if let Some((l, r)) = v.split_once(',') {
+                                    query = query.or_filter(tag::name.between(l, r));
+                                }
+                            },
+                            _ => {},
+                        }
+
+                    }
+                }
+            }
+
             if let Some(p_o) = params.order {
                 for o in p_o {
-                    match table {
-                        Tables::Tag => {
-                            match o.as_str() {
-                                "id" => query = query.then_order_by(tag::id.asc()),
-                                "-id" => query = query.then_order_by(tag::id.desc()),
-                                "name" => query = query.then_order_by(tag::name.asc()),
-                                "-name" => query = query.then_order_by(tag::name.desc()),
-                                _ => {},
-                            }
-                        }
+                    match o.as_str() {
+                        "id" => query = query.then_order_by(tag::id.asc()),
+                        "-id" => query = query.then_order_by(tag::id.desc()),
+                        "name" => query = query.then_order_by(tag::name.asc()),
+                        "-name" => query = query.then_order_by(tag::name.desc()),
+                        _ => {},
                     }
                 }
             }
@@ -104,12 +146,7 @@ pub mod routes {
             let step: i64 = params.step.unwrap_or(10);
             query = query.limit(step);
             query = query.offset(start);
-            match table {
-                Tables::Tag => {
-                    query.load::<Tag>(c)
-                }
-            }
-            //query.select((tag::name, tag::id)).load::<(String, i32)>(c)
+            query.load::<Tag>(c)
 
         }).await {
             Ok(tags) => println!("Here are the results: {:?}", tags ),
@@ -119,52 +156,8 @@ pub mod routes {
 
     #[get("/?<params..>")]
     pub async fn get_tags_test(params: QParams, conn: DbConn) {
-        //http://localhost:8001/api/tags/test/?start=0&step=10&dbfilter[filters][]=id=5&dbfilter[filters][]=name=Rust&myfilter=test=3&myfilter=test2=1&filter=id=46
-
-        parse_and_query(Tables::Tag, params, conn).await;
-        //parse_and_query(tag::table, params, conn).await;
-        let x = tag::table;
-        //match conn.run(move |c|  {
-            //parse_and_query(params, conn);
-            /*
-            tag::table
-            .or_filter(tag::id.eq(46))
-            .select(tag::name)
-            .first::<String>(c)
-            */
-        /* }).await {
-            Ok(tags) => println!("{}", tags ),
-            Err(_) => println!("Zero results"),
-        }*/
+        parse_and_query(params, conn).await;
     }
-        /*
-        parse_and_query(params.clone(), conn).await;
-        let r = "get_tags_test";
-        let start = params.start.unwrap_or(0) as i64;
-        let step = params.step.unwrap_or(10) as i64;
-        println!("dbfilter values = {:?}", &params.dbfilter);
-
-        let mut filters_map = HashMap::new();
-        if let Some(filter) = params.dbfilter {
-            if let Some(filters) = filter.filters {
-                for filter_pair in filters {
-                    let filter_parts: Vec<&str> = filter_pair.splitn(2, '=').collect();
-                    if filter_parts.len() == 2 {
-                        let column = filter_parts[0].trim();
-                        let value = filter_parts[1].trim();
-                        println!("{}", column.to_string());
-                        println!("{}", value.to_string());
-
-                        filters_map.insert(column.to_owned(), value.to_owned());
-                    }
-                }
-            }
-        }
-        */
-        //let mut my_filters_map = HashMap::new()
-
-        //format!("{}\nstart:{}\nstep:{}\n{:?}\n{:?}", r, start, step, filters_map, params.myfilter)
-    //}
 
     #[get("/?<start>&<step>")]
     pub async fn get_tags(start: u8, step: u8, conn: DbConn) -> Value {
