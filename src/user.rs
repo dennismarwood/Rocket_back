@@ -191,7 +191,7 @@ pub mod routes {
                     1 => return Ok(Status::NoContent),
                     0 => return Ok(Status::NotFound),
                     _ => return Err(status::Custom(Status::InternalServerError, 
-                        json!(format!("Should have only deleted up to 1 record, BUT DELETED {}!!!", count)))),// Hope you backed up
+                        json!(format!("Should have only deleted up to 1 record, BUT DELETED {}!!!", count)))),
                 }
             },
             Err(e) => return Err(status::Custom(Status::InternalServerError, 

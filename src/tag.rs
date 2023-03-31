@@ -1,6 +1,6 @@
 use crate::config::DbConn;
 use crate::schema::{tag, blog_tags};
-use crate::models::{Tag, MyResponse};
+use crate::models::{Tag, MyResponse, AResponse};
 use diesel::prelude::*;
 use rocket::serde::json::{Json, Value, json};
 use rocket::http::{Status};
@@ -51,9 +51,9 @@ pub mod routes {
         } else {None}
     }
 
-    pub async fn parse_and_query(params: QParams, conn: DbConn){
+    pub async fn parse_and_query(params: QParams, conn: DbConn) -> QueryResult<Vec<Tag>> {
         //https://docs.diesel.rs/2.0.x/diesel/prelude/trait.QueryDsl.html#method.filter
-        match conn.run(move |c|  {
+        conn.run(move |c| {
 
             let mut query = tag::table.into_boxed::<Mysql>();
             if let Some(eq) = params.filter.eq {
@@ -148,19 +148,31 @@ pub mod routes {
             query = query.offset(start);
             query.load::<Tag>(c)
 
-        }).await {
-            Ok(tags) => println!("Here are the results: {:?}", tags ),
-            Err(_) => println!("Zero results"),
+        }).await 
+    }
+
+    pub fn generate_response(q_res: QueryResult<Vec<Tag>>) -> AResponse {
+        match q_res {
+            Ok(tags) => {
+                AResponse::new_200(
+                    Some(json!(tags))
+                )
+            },
+            Err(_) => {
+                AResponse::new_200(
+                    None,
+                )
+            },
         }
     }
 
     #[get("/?<params..>")]
-    pub async fn get_tags_test(params: QParams, conn: DbConn) {
-        parse_and_query(params, conn).await;
+    pub async fn get_tags(params: QParams, conn: DbConn) -> Value {
+        json!(generate_response(parse_and_query(params, conn).await))
     }
 
     #[get("/?<start>&<step>")]
-    pub async fn get_tags(start: u8, step: u8, conn: DbConn) -> Value {
+    pub async fn get_tags_(start: u8, step: u8, conn: DbConn) -> Value {
         //let mut response = MyResponse {errors: vec![], information: vec![], payloads: vec![]};
         let mut response = MyResponse::new();
         match conn.run(move |c| {
