@@ -1,4 +1,5 @@
 use super::schema::{blog, tag, blog_tags, user, role};
+use rocket::response;
 use rocket::serde::json::{Value};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -18,6 +19,60 @@ pub struct PayloadResponse {
 pub struct InformationalResponse {
     pub message: String,
 }
+/*
+    
+    {
+        "status": "success",
+        "data": [
+            {
+                "id": 1,
+                "name": "Item 1",
+                "description": "This is an example item"
+            }
+        ]
+    }
+
+    {
+        "status": "error",
+        "code": 400,
+        "message": "Invalid request data"
+    }
+
+ */
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct AResponse {
+    pub status: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<rocket::serde::json::Value>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub errors: Option<rocket::serde::json::Value>,
+}
+
+impl AResponse {
+    pub fn new_200(data: Option<Value>) -> Self {
+        AResponse { 
+            status: String::from("Success"), 
+            data: data,
+            message: None,
+            location: None,
+            code: None,
+            errors: None,
+        }
+    }
+}
+
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct MyResponse {
