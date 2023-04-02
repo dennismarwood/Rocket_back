@@ -61,7 +61,7 @@ pub struct AResponse {
 }
 
 impl AResponse {
-    pub fn new_200(data: Option<Value>) -> Self {
+    pub fn success_200(data: Option<Value>) -> Self {
         AResponse { 
             status: String::from("Success"), 
             data: data,
@@ -70,6 +70,17 @@ impl AResponse {
             code: None,
             errors: None,
         }
+    }
+    pub fn error(message: Option<String>, code: Option<String>, 
+        errors: Option<Value>) -> Self {
+            AResponse {
+                status: String::from("Error"),
+                data: None,
+                message: message,
+                location: None,
+                code: code,
+                errors: errors,
+            }
     }
 }
 

@@ -8,7 +8,9 @@ use rocket::response::status;
 
 
 pub mod routes {
+    use chrono::format::parse;
     use diesel::mysql::Mysql;
+    use rocket::serde::json;
     use crate::models::{ErrorResponse};
     use super::*;
 
@@ -151,24 +153,18 @@ pub mod routes {
         }).await 
     }
 
-    pub fn generate_response(q_res: QueryResult<Vec<Tag>>) -> AResponse {
-        match q_res {
-            Ok(tags) => {
-                AResponse::new_200(
-                    Some(json!(tags))
-                )
-            },
-            Err(_) => {
-                AResponse::new_200(
-                    None,
-                )
-            },
-        }
-    }
 
     #[get("/?<params..>")]
-    pub async fn get_tags(params: QParams, conn: DbConn) -> Value {
-        json!(generate_response(parse_and_query(params, conn).await))
+    pub async fn get_tags(params: QParams, conn: DbConn) -> Result<Value, status::BadRequest<Value>> {
+        match parse_and_query(params, conn).await {
+            Ok(tags) => Ok(json!(AResponse::success_200(Some(json!(tags))))),
+            Err(e) => Err(status::BadRequest(Some(
+                json!(AResponse::error(
+                    Some(String::from("Could not perform query with given parameters. Check input before trying again.")), 
+                    Some(String::from("INVALID_INPUT")), 
+                    Some(json!({"errors": [{"db": e.to_string()}]}))))
+                ))),
+        }
     }
 
     #[get("/?<start>&<step>")]
