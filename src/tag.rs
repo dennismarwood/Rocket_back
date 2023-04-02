@@ -155,11 +155,11 @@ pub mod routes {
 
 
     #[get("/?<params..>")]
-    pub async fn get_tags(params: QParams, conn: DbConn) -> Result<Value, status::BadRequest<Value>> {
+    pub async fn get_tags(params: QParams, conn: DbConn) -> Result<Json<AResponse>, status::BadRequest<Json<AResponse>>> {
         match parse_and_query(params, conn).await {
-            Ok(tags) => Ok(json!(AResponse::success_200(Some(json!(tags))))),
+            Ok(tags) => Ok(Json(AResponse::success_200(Some(json!(tags))))),
             Err(e) => Err(status::BadRequest(Some(
-                json!(AResponse::error(
+                Json(AResponse::error(
                     Some(String::from("Could not perform query with given parameters. Check input before trying again.")), 
                     Some(String::from("INVALID_INPUT")), 
                     Some(json!({"errors": [{"db": e.to_string()}]}))))
