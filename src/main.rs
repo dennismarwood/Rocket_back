@@ -71,12 +71,10 @@ fn rocket() -> _ {
         .mount("/openapi", FileServer::from(relative!("/static/3rd_party/swagger-ui-4.18.1/dist")))
         .mount("/", routes![home, openapi_yml])
         .mount("/api", routes![api_info])
-        .mount("/api/tags/test", routes![
-            get_tags_test
-        ])
         .mount("/api/tags", routes![
             get_tags,
-            get_tag_by_id,
+            //get_tags_,
+            //get_tag_by_id,
             //get_tag_by_name,
             add_tag
         ])

@@ -413,8 +413,7 @@ paths:
           content:
             application/json:
               schema: 
-                $ref: "#/components/schemas/server_error"  
-  /tags/{tagID}:
+                $ref: "#/components/schemas/server_error"
     post:
       summary: Create a new tag.
       description: When valid fieds are passed in the request body, a new tag will be created. A 201 will contain the new tag id.
@@ -440,6 +439,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/400_error"  
+  /tags/{tagID}:
     patch:
       summary: Update an existing tag.
       tags:

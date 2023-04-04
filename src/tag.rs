@@ -5,7 +5,8 @@ use diesel::prelude::*;
 use rocket::serde::json::{Json, Value, json};
 use rocket::http::{Status};
 use rocket::response::status;
-
+use rocket::http::uri::fmt::{Formatter, UriDisplay, FromUriParam, Query};
+use std::fmt;
 
 pub mod routes {
     use chrono::format::parse;
@@ -14,7 +15,7 @@ pub mod routes {
     use crate::models::{ErrorResponse};
     use super::*;
 
-    #[derive(Debug, FromForm, Clone)]
+    #[derive(Debug, FromForm, Clone, UriDisplayQuery)]
     pub struct QParams {
         start: Option<i64>,
         step: Option<i64>,
@@ -22,8 +23,54 @@ pub mod routes {
         order: Option<Vec<String>> 
         //grouped_by: Use this to handle the data from many to 1 table relations
     }
+    
+    impl QParams {
+        pub fn new_filter(filter: Filters) -> Self {
+            QParams {
+                filter,
+                start: None,
+                step: None,
+                order: None,
+            }
+        }
+    }
 
-    #[derive(Debug, FromForm, Clone)]
+ /* impl UriDisplay<Query> for QParams {
+        fn fmt(&self, f: &mut Formatter<Query>) -> fmt::Result {
+            if let Some(start) = self.start {
+                f.write_named_value("start", &start)?;
+            }
+            if let Some(step) = self.step {
+                f.write_named_value("step", &step)?;
+            }
+            f.write_named_value("filter", &self.filter)?;
+            if let Some(order) = &self.order {
+                for (i, value) in order.iter().enumerate() {
+                    if i > 0 {
+                        f.write_value("&")?;
+                    }
+                    f.write_named_value("order[]", value)?;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    impl FromUriParam<Query, (Option<i64>, Option<i64>, Filters, Option<Vec<String>>)> for QParams {
+        type Target = QParams;
+
+        fn from_uri_param(param: (Option<i64>, Option<i64>, Filters, Option<Vec<String>>)) -> QParams {    
+            let (start, step, filter, order) = param;
+            QParams {
+                start,
+                step,
+                filter,
+                order,
+            }
+    } */
+//}
+    
+    #[derive(Debug, FromForm, Clone, UriDisplayQuery)]
     pub struct Filters {
         like: Option<Vec<String>>,
         eq: Option<Vec<String>>,
@@ -31,7 +78,18 @@ pub mod routes {
         le: Option<Vec<String>>,
         between: Option<Vec<String>>,
     }
-
+    
+    impl Filters {
+        pub fn new_eq(eq: Option<Vec<String>>) -> Self {
+            Filters {
+                eq,
+                like: None,
+                ge: None,
+                le: None,
+                between: None, 
+            }
+        }
+    }
     pub enum TagFields {
         Id(i32),
         Name(String),
@@ -58,8 +116,10 @@ pub mod routes {
         conn.run(move |c| {
 
             let mut query = tag::table.into_boxed::<Mysql>();
+            println!("{:?}",params);
             if let Some(eq) = params.filter.eq {
                 for f in eq {
+                    println!("ASDF");
                     if let Some(query_parameter) = validation(f){
                         match query_parameter {
                             TagFields::Id(id) => query = query.or_filter(tag::id.eq(id)),
@@ -156,6 +216,7 @@ pub mod routes {
 
     #[get("/?<params..>")]
     pub async fn get_tags(params: QParams, conn: DbConn) -> Result<Json<AResponse>, status::BadRequest<Json<AResponse>>> {
+        println!("HERE");
         match parse_and_query(params, conn).await {
             Ok(tags) => Ok(Json(AResponse::success_200(Some(json!(tags))))),
             Err(e) => Err(status::BadRequest(Some(
@@ -166,6 +227,62 @@ pub mod routes {
                 ))),
         }
     }
+
+    #[get("/<id>")]
+    pub async fn get_tag(id: i32, conn: DbConn) {//} -> Result<Json<AResponse>, status::Custom<Json<AResponse>> > {
+        let x = Filters::new_eq(Some(vec![format!("id={}", id)]));
+        let q_params = QParams::new_filter(x);
+        //let uri = uri!(get_tags( Some(String::from("filter.eq=id=1234")) ));
+        let uri = uri!(get_tags( q_params ));
+        //println!("here - {}", uri.to_string());
+    }
+
+    //A post should return 201 with an address to the new entry in the locaiton header and some additional data in the body.
+    //The post may fail for several reasons. All fails have a default response by rocket.
+    //For the case of a 403 Forbidden (user is unauthorized) then I may want to write a custom handler. See rocket doc under responses. 
+    //Cases that should be handled because specific error messages should be presented to user are:
+    //400 (Bad Request). Default handler is currently being called for fails to match on NewTag.
+    //422 (Unprocessable Entity) Invalid input (that still meets the criteria of the data guard) or a duplicate entry.
+    //TODO: The default handlers will be firing on guard fails, better to replace those with AResponse types.
+
+    #[post("/", format="json", data="<new_tag>")]
+    pub async fn add_tag(conn: DbConn, new_tag: Json<NewTag>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
+        //Because we are loading into a struct, rocket will guard against missing key value in name: string. returns 422.
+        //So there is no need to check that the key is present, only that it is valid.
+        if !(1..=100).contains(&new_tag.name.len()) {
+            return Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::error(
+                Some(String::from("Correct input and try again.")), 
+                Some(String::from("422")), 
+                Some(json!([{"field": "name", "message":  "Valid length is 1 to 100 chars."}]))))));
+        }
+
+        let tag_name = &new_tag.name.clone();
+        
+        match conn.run(move |c| {
+            diesel::insert_into(tag::table)
+            .values(tag::name.eq(&new_tag.name))
+            .execute(c)
+        }).await {
+            Ok(_) => {
+                let id = helper::get_a_tag_id(&conn, tag_name).await; //What is our newly minted tag id?
+                Ok(status::Created::new(format!("Create a type-safe route uri after get /tags/{} is done", id)))    
+            },
+            Err(e) => Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::error(
+                Some(String::from("The entry you are trying to add is already present.")), 
+                Some(String::from("ENTRY_PRESENT")), 
+                Some(json!([{"field": "name", "message": e.to_string()}])))))),
+        }
+    }
+
+    /* #[post("/", format = "json", data="<new_tags>")]
+    pub async fn add_tag(conn: DbConn, new_tags: Json<Vec<String>>) -> Result< Value, status::Custom<Value>> {
+        //let tags = vec![new_tag.name.clone()];
+        match helper::add_tag(&conn, new_tags.into_inner()).await 
+        {
+            Ok(count) => Ok(json!(count)),
+            Err(e) => Err(status::Custom(Status::InternalServerError, json!(format!("Could not add entry to tag. {}", e)))),
+        }
+    } */
 
     #[get("/?<start>&<step>")]
     pub async fn get_tags_(start: u8, step: u8, conn: DbConn) -> Value {
@@ -227,19 +344,24 @@ pub mod routes {
         pub name: String,
     }
     
-    #[post("/", format = "json", data="<new_tags>")]
-    pub async fn add_tag(conn: DbConn, new_tags: Json<Vec<String>>) -> Result< Value, status::Custom<Value>> {
-        //let tags = vec![new_tag.name.clone()];
-        match helper::add_tag(&conn, new_tags.into_inner()).await 
-        {
-            Ok(count) => Ok(json!(count)),
-            Err(e) => Err(status::Custom(Status::InternalServerError, json!(format!("Could not add entry to tag. {}", e)))),
-        }
-    }
 }
 
 pub mod helper {
     use super::*;
+    //mysql does not return an id after creating a new entry. This helper function does only that.
+    pub async fn get_a_tag_id(conn: &DbConn, name: &String) -> String {
+        let name = name.clone();
+        match conn.run(  |c| {
+            tag::table
+                .filter(tag::name.eq(name))
+                .select(tag::id)
+                .first::<i32>(&*c)
+        }).await {
+            Ok(id) => id.to_string(),
+            Err(_) => String::new(),
+        }
+    }
+
     pub async fn get_tag_ids(conn: &DbConn, name: Vec<String>) -> Result <Vec<i32>, diesel::result::Error> {
         conn.run(  |c| {
             tag::table
