@@ -73,6 +73,8 @@ fn rocket() -> _ {
         .mount("/api", routes![api_info])
         .mount("/api/tags", routes![
             get_tags,
+            get_tag,
+            update_tag,
             //get_tags_,
             //get_tag_by_id,
             //get_tag_by_name,

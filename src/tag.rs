@@ -7,11 +7,13 @@ use rocket::http::{Status};
 use rocket::response::status;
 use rocket::http::uri::fmt::{Formatter, UriDisplay, FromUriParam, Query};
 use std::fmt;
+use diesel::result::DatabaseErrorKind::{UniqueViolation, NotNullViolation };
+use diesel::result::Error::{DatabaseError, QueryBuilderError};
 
 pub mod routes {
     use chrono::format::parse;
     use diesel::mysql::Mysql;
-    use rocket::serde::json;
+    use rocket::{serde::json, response::Redirect};
     use crate::models::{ErrorResponse};
     use super::*;
 
@@ -34,41 +36,6 @@ pub mod routes {
             }
         }
     }
-
- /* impl UriDisplay<Query> for QParams {
-        fn fmt(&self, f: &mut Formatter<Query>) -> fmt::Result {
-            if let Some(start) = self.start {
-                f.write_named_value("start", &start)?;
-            }
-            if let Some(step) = self.step {
-                f.write_named_value("step", &step)?;
-            }
-            f.write_named_value("filter", &self.filter)?;
-            if let Some(order) = &self.order {
-                for (i, value) in order.iter().enumerate() {
-                    if i > 0 {
-                        f.write_value("&")?;
-                    }
-                    f.write_named_value("order[]", value)?;
-                }
-            }
-            Ok(())
-        }
-    }
-
-    impl FromUriParam<Query, (Option<i64>, Option<i64>, Filters, Option<Vec<String>>)> for QParams {
-        type Target = QParams;
-
-        fn from_uri_param(param: (Option<i64>, Option<i64>, Filters, Option<Vec<String>>)) -> QParams {    
-            let (start, step, filter, order) = param;
-            QParams {
-                start,
-                step,
-                filter,
-                order,
-            }
-    } */
-//}
     
     #[derive(Debug, FromForm, Clone, UriDisplayQuery)]
     pub struct Filters {
@@ -116,10 +83,8 @@ pub mod routes {
         conn.run(move |c| {
 
             let mut query = tag::table.into_boxed::<Mysql>();
-            println!("{:?}",params);
             if let Some(eq) = params.filter.eq {
                 for f in eq {
-                    println!("ASDF");
                     if let Some(query_parameter) = validation(f){
                         match query_parameter {
                             TagFields::Id(id) => query = query.or_filter(tag::id.eq(id)),
@@ -216,27 +181,27 @@ pub mod routes {
 
     #[get("/?<params..>")]
     pub async fn get_tags(params: QParams, conn: DbConn) -> Result<Json<AResponse>, status::BadRequest<Json<AResponse>>> {
-        println!("HERE");
         match parse_and_query(params, conn).await {
-            Ok(tags) => Ok(Json(AResponse::success_200(Some(json!(tags))))),
+            Ok(tags) => Ok(Json(AResponse::_200(Some(json!(tags))))),
             Err(e) => Err(status::BadRequest(Some(
-                Json(AResponse::error(
-                    Some(String::from("Could not perform query with given parameters. Check input before trying again.")), 
-                    Some(String::from("INVALID_INPUT")), 
-                    Some(json!({"errors": [{"db": e.to_string()}]}))))
+                Json(AResponse::_400(
+                    Some(String::from("Could not perform query with given parameters. Check input before trying again."))))
                 ))),
         }
     }
 
     #[get("/<id>")]
-    pub async fn get_tag(id: i32, conn: DbConn) {//} -> Result<Json<AResponse>, status::Custom<Json<AResponse>> > {
-        let x = Filters::new_eq(Some(vec![format!("id={}", id)]));
-        let q_params = QParams::new_filter(x);
-        //let uri = uri!(get_tags( Some(String::from("filter.eq=id=1234")) ));
-        let uri = uri!(get_tags( q_params ));
-        //println!("here - {}", uri.to_string());
+    pub async fn get_tag(id: i32, conn: DbConn) -> Result<Json<AResponse>, status::BadRequest<Json<AResponse>>> {
+        let q_params = QParams::new_filter(Filters::new_eq(Some(vec![format!("id={}", id)])));
+        //let uri = uri!(get_tags( q_params ));
+        match parse_and_query(q_params, conn).await {
+            Ok(tags) => Ok(Json(AResponse::_200(Some(json!(tags))))),
+            Err(e) => Err(status::BadRequest(Some(
+                Json(AResponse::_400(
+                    Some(String::from("Could not perform query with given parameters. Check input before trying again."))))
+                ))),
+        }
     }
-
     //A post should return 201 with an address to the new entry in the locaiton header and some additional data in the body.
     //The post may fail for several reasons. All fails have a default response by rocket.
     //For the case of a 403 Forbidden (user is unauthorized) then I may want to write a custom handler. See rocket doc under responses. 
@@ -249,12 +214,12 @@ pub mod routes {
     pub async fn add_tag(conn: DbConn, new_tag: Json<NewTag>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
         //Because we are loading into a struct, rocket will guard against missing key value in name: string. returns 422.
         //So there is no need to check that the key is present, only that it is valid.
-        if !(1..=100).contains(&new_tag.name.len()) {
-            return Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::error(
+        /* if !(1..=100).contains(&new_tag.name.len()) {
+            return Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
                 Some(String::from("Correct input and try again.")), 
                 Some(String::from("422")), 
                 Some(json!([{"field": "name", "message":  "Valid length is 1 to 100 chars."}]))))));
-        }
+        } */
 
         let tag_name = &new_tag.name.clone();
         
@@ -264,13 +229,80 @@ pub mod routes {
             .execute(c)
         }).await {
             Ok(_) => {
-                let id = helper::get_a_tag_id(&conn, tag_name).await; //What is our newly minted tag id?
-                Ok(status::Created::new(format!("Create a type-safe route uri after get /tags/{} is done", id)))    
+                //Successfully created tag, now retrieve it's id
+                match helper::get_a_tag_id(&conn, tag_name).await {
+                    Some(id) => {
+                        let uri = uri!("/api/tags/", get_tag(id)).to_string();
+                        let body = json!(AResponse::_201(Some(uri.clone()))).to_string();
+                        Ok(status::Created::new(uri).body(body))
+                    },
+                    None => Ok(status::Created::new("")),
+                }
             },
-            Err(e) => Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::error(
-                Some(String::from("The entry you are trying to add is already present.")), 
-                Some(String::from("ENTRY_PRESENT")), 
-                Some(json!([{"field": "name", "message": e.to_string()}])))))),
+            Err(DatabaseError(UniqueViolation, d)) => 
+                Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
+                    Some(String::from(d.message())), 
+                    Some(String::from("UNIQUE_VIOLATION")))))),
+            
+            Err(DatabaseError(NotNullViolation, d)) => 
+                Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
+                    Some(String::from(d.message())), 
+                    Some(String::from("NOT_NULL_VIOLATION")))))),
+            
+            Err(e) => 
+                Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+        }
+    }
+
+    #[patch("/<id>",  format="json", data="<updated_tag>")]
+    pub async fn update_tag(id: i32, conn: DbConn, mut updated_tag: Json<UpdateTag>) -> Result<status::NoContent, status::Custom<Json<AResponse>> > {
+        match conn.run(move |c| {
+            /*
+            (Newer user here, so assume it is something obvious)
+I am having an issue performing a record update when trying to use the "Identifiable" trait and the "AsChangeSet" trait.
+Things do work if I alter the query to include a filter on the id.
+https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=d24d8eadbd6efce2a31a605b4484a91a
+Why doesn't it include the id as I would expect? Using version 1.4.1
+             */
+            updated_tag.id = Some(id);
+            //println!("{:?}", updated_tag);
+            //diesel is able to deduce the row based on the id specified in the updated_tag.
+            //The filtering occurs automatically from the "Identifiable" macro on the Tag model.
+            let x = //diesel::update(tag::table)
+            diesel::update(tag::table.filter(tag::id.eq(id)))
+            .set(updated_tag.into_inner())
+            ;//.execute(c)
+            
+            println!("\n{}\n", diesel::debug_query::<Mysql , _>(&x));
+            x.execute(c)
+        }).await {
+            //NO: DatabaseError(UniqueViolation, "Duplicate entry 'Patched' for key 'tag.UC_name'")
+            //https://docs.diesel.rs/master/diesel/result/enum.Error.html
+            Ok(rows) => {
+                println!("{}", rows); 
+                match rows {
+                    1 => Ok(status::NoContent),
+                    0 => Err(status::Custom(Status::NotFound, Json(AResponse::_404(
+                            Some(String::from("Could not locate tag with provided id.")))))),
+                    _ => Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))),
+                }
+            }
+            Err(DatabaseError(UniqueViolation, d)) => 
+                Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
+                    Some(String::from(d.message())), 
+                    Some(String::from("UNIQUE_VIOLATION")))))),
+            
+            Err(DatabaseError(NotNullViolation, d)) => 
+                Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
+                    Some(String::from(d.message())), 
+                    Some(String::from("NOT_NULL_VIOLATION")))))),
+            
+            Err(QueryBuilderError(_)) => 
+                Err(status::Custom(Status::BadRequest, Json(AResponse::_400(
+                    Some(String::from("You need to provide the 'name' in the body of your request.")))))),
+
+            Err(e) => 
+                Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         }
     }
 
@@ -344,21 +376,28 @@ pub mod routes {
         pub name: String,
     }
     
+    #[derive(Debug, AsChangeset, serde::Serialize, serde::Deserialize, Identifiable)]//Identifiable
+    #[table_name="tag"]
+    pub struct UpdateTag {
+        pub id: Option<i32>,
+        pub name: Option<String>,
+    }
+
 }
 
 pub mod helper {
     use super::*;
     //mysql does not return an id after creating a new entry. This helper function does only that.
-    pub async fn get_a_tag_id(conn: &DbConn, name: &String) -> String {
+    pub async fn get_a_tag_id( conn: &DbConn, name: &String) -> Option<i32> {
         let name = name.clone();
         match conn.run(  |c| {
             tag::table
                 .filter(tag::name.eq(name))
                 .select(tag::id)
-                .first::<i32>(&*c)
+                .first::<i32>(c)
         }).await {
-            Ok(id) => id.to_string(),
-            Err(_) => String::new(),
+            Ok(id) => Some(id),
+            Err(_) => None,
         }
     }
 
@@ -367,7 +406,7 @@ pub mod helper {
             tag::table
                 .filter(tag::name.eq_any(name))
                 .select(tag::id)
-                .load::<i32>(&*c)
+                .load::<i32>(c)
         }).await
     }
 

@@ -61,7 +61,7 @@ pub struct AResponse {
 }
 
 impl AResponse {
-    pub fn success_200(data: Option<Value>) -> Self {
+    pub fn _200(data: Option<Value>) -> Self {
         AResponse { 
             status: String::from("Success"), 
             data: data,
@@ -71,14 +71,63 @@ impl AResponse {
             errors: None,
         }
     }
-    pub fn error(message: Option<String>, code: Option<String>, 
-        errors: Option<Value>) -> Self {
+    pub fn _201(location: Option<String>) -> Self {
+        AResponse { 
+            status: String::from("Success"), 
+            data: None,
+            message: Some(String::from("Resource created Successfully")),
+            location: location,
+            code: None,
+            errors: None,
+        }
+    }
+    pub fn _400(message: Option<String>) -> Self {
+        AResponse {
+            status: String::from("Error"),
+            data: None,
+            message: message,
+            location: None,
+            code: Some(String::from("INVALID_USER_INPUT")),
+            errors: None,
+        }
+    }
+    pub fn _404(message: Option<String>) -> Self {
+        AResponse {
+            status: String::from("Error"),
+            data: None,
+            message: message,
+            location: None,
+            code: Some(String::from("NOT_FOUND")),
+            errors: None,
+        }
+    }
+    pub fn _422(message: Option<String>, code: Option<String>) -> Self {
             AResponse {
                 status: String::from("Error"),
                 data: None,
                 message: message,
                 location: None,
                 code: code,
+                errors: None,
+            }
+    }
+    pub fn _500() -> Self {
+        AResponse {
+            status: String::from("Error"),
+            data: None,
+            message: Some(String::from("Our apologies, something went wrong.")),
+            location: None,
+            code: Some(String::from("INTERNAL_SERVER_ERROR")),
+            errors: None,
+        }
+}
+    pub fn error(errors: Option<Value>) -> Self {
+            AResponse {
+                status: String::from("Error"),
+                data: None,
+                message: Some(String::from("An unexpected error type has occured.")),
+                location: None,
+                code: Some(String::from("UNEXPECTED_ERROR_TYPE")),
                 errors: errors,
             }
     }
@@ -112,7 +161,7 @@ pub struct BlogEntry {
     pub content: Option<String>,
 }
 
-#[derive(serde::Serialize, Queryable, Identifiable, Debug)]
+#[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize, AsChangeset)]
 #[table_name="tag"]
 pub struct Tag {
     pub id: i32,
