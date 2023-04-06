@@ -1,20 +1,15 @@
 use crate::config::DbConn;
 use crate::schema::{tag, blog_tags};
-use crate::models::{Tag, MyResponse, AResponse};
+use crate::models::{Tag, AResponse};
 use diesel::prelude::*;
 use rocket::serde::json::{Json, Value, json};
 use rocket::http::{Status};
 use rocket::response::status;
-use rocket::http::uri::fmt::{Formatter, UriDisplay, FromUriParam, Query};
-use std::fmt;
 use diesel::result::DatabaseErrorKind::{UniqueViolation, NotNullViolation };
 use diesel::result::Error::{DatabaseError, QueryBuilderError};
 
 pub mod routes {
-    use chrono::format::parse;
     use diesel::mysql::Mysql;
-    use rocket::{serde::json, response::Redirect};
-    use crate::models::{ErrorResponse};
     use super::*;
 
     #[derive(Debug, FromForm, Clone, UriDisplayQuery)]
@@ -178,30 +173,31 @@ pub mod routes {
         }).await 
     }
 
-
-    #[get("/?<params..>")]
-    pub async fn get_tags(params: QParams, conn: DbConn) -> Result<Json<AResponse>, status::BadRequest<Json<AResponse>>> {
-        match parse_and_query(params, conn).await {
-            Ok(tags) => Ok(Json(AResponse::_200(Some(json!(tags))))),
-            Err(e) => Err(status::BadRequest(Some(
-                Json(AResponse::_400(
-                    Some(String::from("Could not perform query with given parameters. Check input before trying again."))))
-                ))),
-        }
-    }
-
     #[get("/<id>")]
     pub async fn get_tag(id: i32, conn: DbConn) -> Result<Json<AResponse>, status::BadRequest<Json<AResponse>>> {
         let q_params = QParams::new_filter(Filters::new_eq(Some(vec![format!("id={}", id)])));
         //let uri = uri!(get_tags( q_params ));
         match parse_and_query(q_params, conn).await {
             Ok(tags) => Ok(Json(AResponse::_200(Some(json!(tags))))),
-            Err(e) => Err(status::BadRequest(Some(
+            Err(_) => Err(status::BadRequest(Some(
                 Json(AResponse::_400(
                     Some(String::from("Could not perform query with given parameters. Check input before trying again."))))
                 ))),
         }
     }
+
+    #[get("/?<params..>")]
+    pub async fn get_tags(params: QParams, conn: DbConn) -> Result<Json<AResponse>, status::BadRequest<Json<AResponse>>> {
+        match parse_and_query(params, conn).await {
+            Ok(tags) => Ok(Json(AResponse::_200(Some(json!(tags))))),
+            Err(_) => Err(status::BadRequest(Some(
+                Json(AResponse::_400(
+                    Some(String::from("Could not perform query with given parameters. Check input before trying again."))))
+                ))),
+        }
+    }
+
+
     //A post should return 201 with an address to the new entry in the locaiton header and some additional data in the body.
     //The post may fail for several reasons. All fails have a default response by rocket.
     //For the case of a 403 Forbidden (user is unauthorized) then I may want to write a custom handler. See rocket doc under responses. 
@@ -211,7 +207,7 @@ pub mod routes {
     //TODO: The default handlers will be firing on guard fails, better to replace those with AResponse types.
 
     #[post("/", format="json", data="<new_tag>")]
-    pub async fn add_tag(conn: DbConn, new_tag: Json<NewTag>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
+    pub async fn post_tag(conn: DbConn, new_tag: Json<NewTag>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
         //Because we are loading into a struct, rocket will guard against missing key value in name: string. returns 422.
         //So there is no need to check that the key is present, only that it is valid.
         /* if !(1..=100).contains(&new_tag.name.len()) {
@@ -255,7 +251,7 @@ pub mod routes {
     }
 
     #[patch("/<id>",  format="json", data="<updated_tag>")]
-    pub async fn update_tag(id: i32, conn: DbConn, mut updated_tag: Json<UpdateTag>) -> Result<status::NoContent, status::Custom<Json<AResponse>> > {
+    pub async fn patch_tag(id: i32, conn: DbConn, mut updated_tag: Json<UpdateTag>) -> Result<status::NoContent, status::Custom<Json<AResponse>> > {
         match conn.run(move |c| {
             /*
             (Newer user here, so assume it is something obvious)
@@ -304,70 +300,6 @@ Why doesn't it include the id as I would expect? Using version 1.4.1
             Err(e) => 
                 Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         }
-    }
-
-    /* #[post("/", format = "json", data="<new_tags>")]
-    pub async fn add_tag(conn: DbConn, new_tags: Json<Vec<String>>) -> Result< Value, status::Custom<Value>> {
-        //let tags = vec![new_tag.name.clone()];
-        match helper::add_tag(&conn, new_tags.into_inner()).await 
-        {
-            Ok(count) => Ok(json!(count)),
-            Err(e) => Err(status::Custom(Status::InternalServerError, json!(format!("Could not add entry to tag. {}", e)))),
-        }
-    } */
-
-    #[get("/?<start>&<step>")]
-    pub async fn get_tags_(start: u8, step: u8, conn: DbConn) -> Value {
-        //let mut response = MyResponse {errors: vec![], information: vec![], payloads: vec![]};
-        let mut response = MyResponse::new();
-        match conn.run(move |c| {
-            tag::table
-            .limit(step.try_into().unwrap())
-            .offset(start.try_into().unwrap())
-            .load::<Tag>(c)
-        }).await {
-            Ok(tags) => 
-                //return Ok(json!({"payload": tags}));
-                match tags.len() {
-                    1.. => response.payloads.push(json!(tags)),
-                    _ => response.errors.push(ErrorResponse { code: Status::NoContent.to_string(), message: "The URI format was valid but the provided query parameters yielded zero results.".to_string() }),
-                }
-            Err(e) => 
-                //status::Custom(Status::InternalServerError , json!(format!("{}", e)))
-                response.errors.push(ErrorResponse { code: Status::InternalServerError.to_string(), message: e.to_string() }),
-        }
-        //response.information.push(InformationalResponse { message: "Here is some info".to_string() });
-        json!(&response)
-    }
-
-    #[get("/<id>")]
-    pub async fn get_tag_by_id(id: i32, conn: DbConn) -> Value {
-        let mut response = MyResponse::new();
-        match conn.run(move |c|  {
-            tag::table
-            .filter(tag::id.eq(id))
-            .select(tag::name)
-            .first::<String>(c)
-        }).await {
-            Ok(tags) => response.payloads.push(json!(tags)),
-            Err(_) => response.errors.push(ErrorResponse { code: Status::NotFound.to_string(), message: "The specified URI does not exist because the item id was not found.".to_string() }),
-        }
-        json!(&response)
-    }
-
-    #[get("/?<name>")]
-    pub async fn get_tag_by_name(name: String, conn: DbConn) -> Value {
-        let mut response = MyResponse::new();
-        match conn.run(move |c|  {
-            tag::table
-            .filter(tag::name.eq(name))
-            .select(tag::id)
-            .first::<i32>(c)
-        }).await {
-            Ok(tags) => response.payloads.push(json!(tags)),
-            Err(_) => response.errors.push(ErrorResponse { code: Status::NotFound.to_string(), message: "The specified URI does not exist because the item name was not found.".to_string() }),
-        }
-        json!(&response)
     }
 
     #[derive(Debug, Insertable, serde::Deserialize)]
@@ -448,21 +380,4 @@ pub mod helper {
         }).await
 
     }
-    
-    /*
-    //new_tags is type `Vec<String>`
-let (new_tags, tags_result) = conn.run(move |c| {
-            let tags_result = tag::table
-            .filter(tag::name.eq_any(new_tags))
-            .select(tag::name)
-            .load::<String>(c);
-          (new_tags, tags_result)
-        }).await;
-    */
-    /*
-    diesel::delete(tag::table.find(id)).execute(c)
-    status::NoContent
-    */
-    
-
 }
