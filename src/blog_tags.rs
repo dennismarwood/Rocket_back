@@ -41,7 +41,7 @@ pub async fn insert_blog_tags(conn: &DbConn, blog_id: i32, tag_names: Vec<String
     conn.run(move |c| {
         diesel::insert_into(blog_tags::table)
         .values(entries)
-        .execute(&*c)
+        .execute(c)
     }).await
 }
 

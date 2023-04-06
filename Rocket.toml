@@ -4,3 +4,6 @@ port = 8001
 
 [global.databases]
 #mysql_path = {url = "mysql://root:password@dev_db:3306/homepage"}
+
+[default.databases.diesel]
+url = "mysql://root:password@dev_db:3306/homepage"
