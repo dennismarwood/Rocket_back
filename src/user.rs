@@ -7,9 +7,8 @@ use crate::pw::get_phc;
 use rocket::http::{Status};
 use rocket::response::status;
 use rocket::Request;
-use diesel::*;
 use rocket::form::Form;
-use crate::myjsonapi::{JSONAPIError, JSONAPIPatch};
+use crate::myjsonapi::{JSONAPIError,};
 //use rocket::response::Redirect;
 //use crate::index::home;
 //#[macro_use] extern crate serde_derive;
@@ -78,10 +77,10 @@ pub mod routes {
         todo!("\n\npatch_user not implimented for the content-type:application/x-www-form-urlencoded. {:?}", updated_user)
     }
 
-    #[patch("/", format="json", data="<updated_user>")]
+    /* #[patch("/", format="json", data="<updated_user>")]
     pub async fn patch_user(updated_user: Json<UpdateUser>) -> Value {
         todo!()
-    }
+    } */
 
     #[patch("/<id>", format = "json", data="<updated_user>")]
     pub async fn update_user(id: i32, conn: DbConn, mut updated_user: Json<UpdateUser>, _x: Level1) -> Result<Status, status::Custom<Value>> {

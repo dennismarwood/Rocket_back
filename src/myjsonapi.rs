@@ -9,9 +9,7 @@ pub struct JSONAPIError {
     pub detail: String, //Your session is expired.
 }
 
-enum relationship {
 
-}
 //Kind of works.. but one issue is that the Vecs require square brackets even when only one entry is passed.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct JSONAPIPatch {

@@ -6,6 +6,7 @@ use crate::models::{BlogTags, BlogEntry, Tag};
 use std::iter::zip;
 
 pub enum BelongsTo {
+    #[allow(dead_code)]
     BlogEntry(BlogEntry),
     Tag(Vec<Tag>),
 }

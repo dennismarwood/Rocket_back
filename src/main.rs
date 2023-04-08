@@ -45,10 +45,10 @@ async fn openapi_yml() -> Option<NamedFile> {
     NamedFile::open("src/homepage.yml").await.ok()
 }
 
-#[get("/openapi_index")]
+/* #[get("/openapi_index")]
 async fn openapi_index() -> Option<NamedFile> {
     NamedFile::open("static/3rd_party/swagger-ui-4.18.1/dist/index.html").await.ok()
-}
+} */
 
 #[launch]
 fn rocket() -> _ {
@@ -108,7 +108,7 @@ fn rocket() -> _ {
             delete_user, 
             update_user,
             get_user,
-            patch_user
+            //patch_user
         ])
             .register("/user", catchers![
                 dup_entry,

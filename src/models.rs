@@ -1,5 +1,4 @@
 use super::schema::{blog, tag, blog_tags, user, role};
-use rocket::response;
 use rocket::serde::json::{Value};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -142,12 +141,6 @@ pub struct MyResponse {
     pub information:Vec<InformationalResponse>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<ErrorResponse>,
-}
-
-impl MyResponse {
-    pub fn new() -> Self {
-        MyResponse {errors: vec![], information: vec![], payloads: vec![]}
-    }
 }
 
 #[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize)]
