@@ -5,6 +5,21 @@ use diesel::prelude::*;
 use crate::models::{BlogTags, BlogEntry, Tag};
 use std::iter::zip;
 
+pub enum BelongsTo {
+    BlogEntry(BlogEntry),
+    Tag(Vec<Tag>),
+}
+
+
+pub async fn delete_entries(conn: &DbConn, key: BelongsTo) -> Result<usize, diesel::result::Error> {
+    conn.run(move |c| {
+        match key {
+            BelongsTo::BlogEntry(v) => diesel::delete(BlogTags::belonging_to(&v)).execute(c),
+            BelongsTo::Tag(v)  => diesel::delete(BlogTags::belonging_to(&v)).execute(c),
+        }
+    }).await
+}
+
 pub async fn drop_blog_tags(conn: &DbConn, blog_id: i32) -> Result< usize, diesel::result::Error > {
     //Remove all entries from blog_tags that match the blog_id you pass in.
 

@@ -2,7 +2,7 @@ use rocket::serde::json::{Json, Value, json};
 use crate::schema::{blog, blog_tags, tag};
 use diesel::prelude::*;
 use crate::config::DbConn;
-use crate::tag::helper::{add_tag, get_tags_on_post};
+use crate::tag::helper::{add_tag};
 use crate::blog_tags::*;
 use rocket::http::{Status};
 use rocket::response::status;

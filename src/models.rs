@@ -101,14 +101,14 @@ impl AResponse {
             errors: None,
         }
     }
-    pub fn _422(message: Option<String>, code: Option<String>) -> Self {
+    pub fn _422(message: Option<String>, code: Option<String>, errors: Option<Value>) -> Self {
             AResponse {
                 status: String::from("Error"),
                 data: None,
                 message: message,
                 location: None,
                 code: code,
-                errors: None,
+                errors: errors,
             }
     }
     pub fn _500() -> Self {
