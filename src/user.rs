@@ -54,9 +54,9 @@ pub mod routes {
         pub role: i32,
         pub active: bool,
     }
-
+ 
     #[derive(Debug, FromForm, serde::Deserialize, AsChangeset)]
-    #[table_name ="user"]
+    #[diesel(table_name = user)]
     pub struct UpdateUser {
         pub email : Option<String>,
         pub phc :Option<String>, // Must be labled phc for diesel but this will initially be the user's new password

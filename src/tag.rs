@@ -58,13 +58,13 @@ pub mod routes {
     }
     
     #[derive(Debug, Insertable, serde::Deserialize)]
-    #[table_name="tag"]
+    #[diesel(table_name = tag)]
     pub struct NewTag {
         pub name: String,
     }
     
     #[derive(Debug, AsChangeset, serde::Serialize, serde::Deserialize, Identifiable)]
-    #[table_name="tag"]
+    #[diesel(table_name = tag)]
     pub struct UpdateTag {
         pub id: i32,
         pub name: Option<String>,

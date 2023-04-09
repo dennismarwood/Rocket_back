@@ -144,7 +144,7 @@ pub struct MyResponse {
 }
 
 #[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize)]
-#[table_name = "blog"]
+#[diesel(table_name = blog)]
 pub struct BlogEntry {
     pub id: i32,
     pub title: String,
@@ -155,16 +155,16 @@ pub struct BlogEntry {
 }
 
 #[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize, AsChangeset)]
-#[table_name="tag"]
+#[diesel(table_name = tag)]
 pub struct Tag {
     pub id: i32,
     pub name: String,
 }
 
 #[derive(serde::Serialize, Queryable, Associations, Identifiable, Debug, serde::Deserialize)]
-#[table_name = "blog_tags"]
-#[belongs_to(BlogEntry, foreign_key = "blog_id")]
-#[belongs_to(Tag)]
+#[diesel(table_name = blog_tags)]
+#[diesel(belongs_to(BlogEntry, foreign_key = blog_id))]
+#[diesel(belongs_to(Tag))]
 pub struct BlogTags {
     pub id: i32,
     pub blog_id: i32,
@@ -172,15 +172,15 @@ pub struct BlogTags {
 }
 
 #[derive(Insertable, serde::Deserialize)]
-#[table_name="blog_tags"]
+#[diesel(table_name = blog_tags)]
 pub struct NewBlogTag {
     pub blog_id: i32,
     pub tag_id: i32
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Identifiable, Queryable, Associations, PartialEq, Debug)]
-#[table_name="user"]
-#[belongs_to(Role, foreign_key = "role")]
+#[diesel(table_name = user)]
+#[diesel(belongs_to(Role, foreign_key = role))]
 pub struct User {
     pub id: i32,
     pub email: Option<String>,
@@ -194,7 +194,7 @@ pub struct User {
 }
 
 #[derive(Insertable, serde::Deserialize, Queryable, Debug)]
-#[table_name="user"]
+#[diesel(table_name = user)]
 pub struct NewUser {
     pub email: String,
     pub phc: Option<String>,
@@ -205,7 +205,7 @@ pub struct NewUser {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Identifiable, Queryable, PartialEq, Debug)]
-#[table_name="role"]
+#[diesel(table_name = role)]
 pub struct Role {
     pub id: i32,
     pub user_role: String,
