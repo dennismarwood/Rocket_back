@@ -1,6 +1,6 @@
 use crate::config::DbConn;
 use crate::schema::{tag};
-use crate::models::{Tag, AResponse};
+use crate::models::{Tag, AResponse, QParams, Filters};
 use diesel::prelude::*;
 use rocket::serde::json::{Json, json};
 use rocket::http::{Status};
@@ -8,50 +8,11 @@ use rocket::response::status;
 use diesel::result::DatabaseErrorKind::{UniqueViolation, NotNullViolation };
 use diesel::result::Error::{DatabaseError, QueryBuilderError};
 
+
 pub mod routes {
     use diesel::mysql::Mysql;
     use super::*;
 
-    #[derive(Debug, FromForm, Clone, UriDisplayQuery)]
-    pub struct QParams {
-        start: Option<i64>,
-        step: Option<i64>,
-        filter: Filters,
-        order: Vec<String> 
-        //grouped_by: Use this to handle the data from many to 1 table relations
-    }
-    
-    impl QParams {
-        pub fn new_filter(filter: Filters) -> Self {
-            QParams {
-                filter,
-                start: None,
-                step: None,
-                order: Vec::new(),
-            }
-        }
-    }
-    
-    #[derive(Debug, FromForm, Clone, UriDisplayQuery)]
-    pub struct Filters {
-        like: Vec<String>,
-        eq: Vec<String>,
-        ge: Vec<String>,
-        le: Vec<String>,
-        between: Vec<String>,
-    }
-    
-    impl Filters {
-        pub fn new_eq(eq: Vec<String>) -> Self {
-            Filters {
-                eq,
-                like: Vec::new(),
-                ge: Vec::new(),
-                le: Vec::new(),
-                between: Vec::new(), 
-            }
-        }
-    }
     pub enum TagFields {
         Id(i32),
         Name(String),
@@ -111,7 +72,6 @@ pub mod routes {
             }
 
             for f in params.filter.le {
-                println!("{}", f);
                 if let Some(query_parameter) = validation(f){
                     match query_parameter {
                         TagFields::Id(id) => query = query.or_filter(tag::id.le(id)),

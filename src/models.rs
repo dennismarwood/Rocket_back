@@ -1,6 +1,47 @@
 use super::schema::{blog, tag, blog_tags, user, role};
 use rocket::serde::json::{Value};
 
+#[derive(Debug, FromForm)]
+    pub struct QParams {
+        pub start: Option<i64>,
+        pub step: Option<i64>,
+        pub filter: Filters,
+        pub order: Vec<String> 
+        //grouped_by: Use this to handle the data from many to 1 table relations
+    }
+    
+    impl QParams {
+        pub fn new_filter(filter: Filters) -> Self {
+            QParams {
+                filter,
+                start: None,
+                step: None,
+                order: Vec::new(),
+            }
+        }
+    }
+    
+    #[derive(Debug, FromForm)]
+    pub struct Filters {
+        pub like: Vec<String>,
+        pub eq: Vec<String>,
+        pub ge: Vec<String>,
+        pub le: Vec<String>,
+        pub between: Vec<String>,
+    }
+    
+    impl Filters {
+        pub fn new_eq(eq: Vec<String>) -> Self {
+            Filters {
+                eq,
+                like: Vec::new(),
+                ge: Vec::new(),
+                le: Vec::new(),
+                between: Vec::new(), 
+            }
+        }
+    }
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct ErrorResponse {
     pub code: String,
@@ -143,7 +184,7 @@ pub struct MyResponse {
     pub errors: Vec<ErrorResponse>,
 }
 
-#[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize)]
+#[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize, Selectable)]
 #[diesel(table_name = blog)]
 pub struct BlogEntry {
     pub id: i32,
@@ -154,14 +195,14 @@ pub struct BlogEntry {
     pub content: Option<String>,
 }
 
-#[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize, AsChangeset)]
+#[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize, AsChangeset, Selectable, PartialEq)]
 #[diesel(table_name = tag)]
 pub struct Tag {
     pub id: i32,
     pub name: String,
 }
 
-#[derive(serde::Serialize, Queryable, Associations, Identifiable, Debug, serde::Deserialize)]
+#[derive(serde::Serialize, Queryable, Associations, Identifiable, Debug, serde::Deserialize, Selectable)]
 #[diesel(table_name = blog_tags)]
 #[diesel(belongs_to(BlogEntry, foreign_key = blog_id))]
 #[diesel(belongs_to(Tag))]

@@ -79,7 +79,9 @@ fn rocket() -> _ {
             delete_tag
         ])
         .mount("/api/posts", routes![
-            get_post_by_id,
+            get_posts,
+            get_post,
+            //get_post_by_id,
             get_tags_on_post,
             get_post_by_title,
             get_post_by_author, 

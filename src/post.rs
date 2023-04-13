@@ -1,21 +1,238 @@
 use rocket::serde::json::{Json, Value, json};
 use crate::schema::{blog, blog_tags, tag};
+use crate::models::{BlogEntry, AResponse, QParams, Filters, BlogTags, Tag};
 use diesel::prelude::*;
 use crate::config::DbConn;
 use crate::tag::helper::{add_tag};
 use crate::blog_tags::*;
 use rocket::http::{Status};
 use rocket::response::status;
+use diesel::mysql::Mysql;
 
 pub mod routes {
-    use crate::models::BlogEntry;
     use crate::auth::Level1;
 
     use super::*;
     use helper::*;
     use serde::Deserialize;
 
+    pub enum PostFields {
+        Id(i32),
+        Title(String),
+        Author(String),
+        Created(chrono::NaiveDateTime),
+        LastUpdated(chrono::NaiveDate),
+        Content(String,)
+    }
+
+    pub fn validation(qp: String) -> Option<PostFields> {
+        // Verify that the query parameter is valid in format
+        if let Some((k, v)) = qp.split_once('=') {
+            match k.to_lowercase().as_str() {
+                "id" => {
+                    match v.parse::<i32>() {
+                        Ok(v) => Some(PostFields::Id(v)),
+                        _ => None,
+                    }
+                },
+                "title" => Some(PostFields::Title(String::from(v))),
+                "author" => Some(PostFields::Author(String::from(v))),
+                "content" => Some(PostFields::Content(String::from(v))),
+                "created" => {
+                    match chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d") {
+                        Ok(d) => Some(PostFields::Created(d.and_hms(0, 0, 0))),
+                        _ => None,
+                    }
+                }
+                "lastupdated" => {
+                    match chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d") {
+                        Ok(d) => Some(PostFields::LastUpdated(d)),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        } else {None}
+    }
+
+    pub async fn parse_and_query(params: QParams, conn: &DbConn) -> QueryResult<Vec<BlogEntry>> {
+        //https://docs.diesel.rs/2.0.x/diesel/prelude/trait.QueryDsl.html#method.filter
+        conn.run(move |c| {
+
+            let mut query = blog::table.into_boxed::<Mysql>();
+
+            for f in params.filter.eq {
+                if let Some(query_parameter) = validation(f){
+                    match query_parameter {
+                        PostFields::Id(id) => query = query.or_filter(blog::id.eq(id)),
+                        PostFields::Title(title) => query = query.or_filter(blog::title.eq(title)),
+                        PostFields::Author(author) => query = query.or_filter(blog::author.eq(author)),
+                        PostFields::Created(created) => query = query.or_filter(blog::created.eq(created)),
+                        PostFields::LastUpdated(lu) => query = query.or_filter(blog::last_updated.eq(lu)),
+                        PostFields::Content(content) => query = query.or_filter(blog::content.eq(content)),
+                    }
+                }
+            }
+
+            for f in params.filter.ge {
+                if let Some(query_parameter) = validation(f){
+                    match query_parameter {
+                        PostFields::Id(id) => query = query.or_filter(blog::id.ge(id)),
+                        PostFields::Title(title) => query = query.or_filter(blog::title.ge(title)),
+                        PostFields::Author(author) => query = query.or_filter(blog::author.ge(author)),
+                        PostFields::Created(created) => query = query.or_filter(blog::created.ge(created)),
+                        PostFields::LastUpdated(lu) => query = query.or_filter(blog::last_updated.ge(lu)),
+                        PostFields::Content(content) => query = query.or_filter(blog::content.ge(content)),
+                    }
+                }
+            }
+
+            for f in params.filter.le {
+                if let Some(query_parameter) = validation(f){
+                    match query_parameter {
+                        PostFields::Id(id) => query = query.or_filter(blog::id.le(id)),
+                        PostFields::Title(title) => query = query.or_filter(blog::title.le(title)),
+                        PostFields::Author(author) => query = query.or_filter(blog::author.le(author)),
+                        PostFields::Created(created) => query = query.or_filter(blog::created.le(created)),
+                        PostFields::LastUpdated(lu) => query = query.or_filter(blog::last_updated.le(lu)),
+                        PostFields::Content(content) => query = query.or_filter(blog::content.le(content)),
+                    }
+                }
+            }
+
+            for f in params.filter.like {
+                if let Some(query_parameter) = validation(f){
+                    match query_parameter {
+                        PostFields::Title(title) => query = query.or_filter(blog::title.like(title)),
+                        PostFields::Author(author) => query = query.or_filter(blog::author.like(author)),
+                        PostFields::Content(content) => query = query.or_filter(blog::content.like(content)),
+                        _ => {},
+                    }
+                }
+            }
+
+            for b in &params.filter.between {
+                if let Some((k, v)) = b.split_once('=') {
+                    if let Some((l, r)) = v.split_once(',') {
+                        match k.to_lowercase().as_str() {
+                            "id" => if let (Ok(l), Ok(r)) = (l.parse::<i32>(), r.parse::<i32>()) {
+                                        query = query.or_filter(blog::id.between(l, r));
+                                    }
+                            "title" => query = query.or_filter(blog::title.between(l, r)),
+                            "created" => if let (Ok(l), Ok(r)) = (
+                                            chrono::NaiveDate::parse_from_str(l, "%Y-%m-%d"), 
+                                            chrono::NaiveDate::parse_from_str(r, "%Y-%m-%d"),
+                                        )
+                                        {
+                                            query = query.or_filter(blog::created.between(l.and_hms(0, 0, 0), r.and_hms(0, 0, 0)));
+                                        }
+                            "lastupdated" => if let (Ok(l), Ok(r)) = (
+                                            chrono::NaiveDate::parse_from_str(l, "%Y-%m-%d"), 
+                                            chrono::NaiveDate::parse_from_str(r, "%Y-%m-%d"),
+                                        )
+                                        {
+                                            query = query.or_filter(blog::last_updated.between(l,r));
+                                        } 
+                            _ => (),
+                        }
+                    }
+                }
+            }
+
+            for o in params.order {
+                println!("HERE {}", o);
+                match o.to_lowercase().as_str() {
+                    "id" => query = query.then_order_by(blog::id.asc()),
+                    "-id" => query = query.then_order_by(blog::id.desc()),
+                    "title" => query = query.then_order_by(blog::title.asc()),
+                    "-title" => query = query.then_order_by(blog::title.desc()),
+                    "author" => query = query.then_order_by(blog::author.asc()),
+                    "-author" => query = query.then_order_by(blog::author.desc()),
+                    "created" => query = query.then_order_by(blog::created.asc()),
+                    "-created" => query = query.then_order_by(blog::created.desc()),
+                    "lastupdated" => query = query.then_order_by(blog::last_updated.asc()),
+                    "-lastupdated" => query = query.then_order_by(blog::last_updated.desc()),
+                    _ => {},
+                }
+            }
+
+            //page indexing
+            let start: i64 = params.start.unwrap_or(0);
+            let step: i64 = params.step.unwrap_or(10);
+            query = query.limit(step);
+            query = query.offset(start);
+            query.load::<BlogEntry>(c)
+
+        }).await 
+    }
+
+    #[get("/?<params..>")]
+    pub async fn get_posts(params: QParams, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+        //https://diesel.rs/guides/relations.html#many-to-many-or-mn
+        //https://docs.rs/diesel/latest/diesel/prelude/trait.QueryDsl.html#method.group_by
+        //http://localhost:8001/api/posts?filter.eq=id=31&filter.eq=id=33
+
+        let target_posts = match parse_and_query(params, &conn).await {
+            Ok(posts) => posts,
+                //Ok(Json(AResponse::_200(Some(json!(posts))))),
+            Err(e) => 
+                return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+        };
+        
+        conn.run(move |c| {
+
+            let tags_x: Vec<(BlogTags, Tag)> = match BlogTags::belonging_to(&target_posts) 
+                    .inner_join(tag::table)
+                    .select(  (BlogTags::as_select(), Tag::as_select()) )
+                    .load(c)
+            {
+                Ok(tags_x) => tags_x,
+                Err(e) =>  return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+            };
+
+            let test = tags_x
+            .grouped_by(&target_posts);
+            println!("{:?}", &target_posts);
+            println!("{:?}", test);
+
+            let tags: Vec<(BlogTags, Tag)> = match BlogTags::belonging_to(&target_posts) 
+            .inner_join(tag::table)
+            .select(  (BlogTags::as_select(), Tag::as_select()) )
+            .load(c)
+            {
+                Ok(tags) => tags,
+                Err(e) =>  return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+            };
+
+            let posts_and_their_tags: Vec<(BlogEntry, Vec<Tag>)> = tags
+                .grouped_by(&target_posts) //Vec<()
+                .into_iter() //Vec<(target_poss
+                .zip(target_posts) // 
+                .map(|(bt, be)|
+                        (be, bt.into_iter().map(|(_, bt)| bt)
+                    .collect()))
+                .collect();
+            println!("{:?}", &posts_and_their_tags);
+            println!("{}", json!(&posts_and_their_tags));
+            Ok(Json(AResponse::_200(Some(json!(posts_and_their_tags)))))
+        }).await
+
+    }
+
     #[get("/<id>")]
+    pub async fn get_post(id: i32, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+        let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", id)]));
+        match parse_and_query(q_params, &conn).await {
+            Ok(posts) => match posts.len() {
+                0 => Err(status::Custom(Status::NotFound, Json(AResponse::_404(None)))),
+                _ => Ok(Json(AResponse::_200(Some(json!(posts))))),
+            }    
+            Err(e) => 
+                Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+        }
+    }
+
+    /* #[get("/<id>")]
     pub async fn get_post_by_id(id: i32, conn: DbConn) -> Result< Value, status::Custom<Value>> {
         match conn.run(move |c| {
             blog::table
@@ -28,7 +245,7 @@ pub mod routes {
                 return Ok(json!(x))},
             Err(e) => Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
         }
-    }
+    } */
 
     #[get("/<id>/tags")]
     pub async fn get_tags_on_post(id: i32, conn: DbConn) -> Result< Value, status::Custom<Value>> {
