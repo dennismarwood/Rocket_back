@@ -19,6 +19,26 @@ use rocket::serde::json::{Value};
                 order: Vec::new(),
             }
         }
+
+        pub fn calculate_limit(&self) -> i64 {
+            /*
+            Some functions, such as the put on posts, can purposely pass empty filter values
+            or the user may pass invalid values thus effectively passing empty filter values.
+            Empty filters will return all entries as it is an sql select w/o any where clause.
+            To address this, look at all the filters. If they are empty assume the user does NOT
+            acutally want an unconstrained search and return an empty set to them. 
+
+            This method should only be called if the user did not specify a step value in their query.
+            */
+
+            if  self.filter.like.len() +
+                self.filter.eq.len() +
+                self.filter.ge.len() +
+                self.filter.le.len() +
+                self.filter.between.len() == 0 {return 0}
+            //10 is the default value if not specified by the user.
+            10
+        }
     }
     
     #[derive(Debug, FromForm)]
@@ -184,7 +204,7 @@ pub struct MyResponse {
     pub errors: Vec<ErrorResponse>,
 }
 
-#[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize, Selectable)]
+#[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize, Clone)]
 #[diesel(table_name = blog)]
 pub struct BlogEntry {
     pub id: i32,
@@ -202,7 +222,7 @@ pub struct Tag {
     pub name: String,
 }
 
-#[derive(serde::Serialize, Queryable, Associations, Identifiable, Debug, serde::Deserialize, Selectable)]
+#[derive(serde::Serialize, Queryable, Associations, Identifiable, Debug, serde::Deserialize, Selectable, Insertable)]
 #[diesel(table_name = blog_tags)]
 #[diesel(belongs_to(BlogEntry, foreign_key = blog_id))]
 #[diesel(belongs_to(Tag))]

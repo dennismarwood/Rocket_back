@@ -1,20 +1,25 @@
-use rocket::serde::json::{Json, Value, json};
-use crate::schema::{blog, blog_tags, tag};
-use crate::models::{BlogEntry, AResponse, QParams, Filters, BlogTags, Tag};
-use diesel::prelude::*;
 use crate::config::DbConn;
-use crate::tag::helper::{add_tag};
-use crate::blog_tags::*;
+use crate::models::{BlogEntry, AResponse, QParams, Filters, BlogTags, Tag};
+use crate::schema::{blog, tag};
+use diesel::prelude::*;
+use diesel::mysql::Mysql;
+use diesel::result::DatabaseErrorKind::{UniqueViolation, NotNullViolation };
+use diesel::result::Error::{DatabaseError, QueryBuilderError};
 use rocket::http::{Status};
 use rocket::response::status;
-use diesel::mysql::Mysql;
+use rocket::serde::json::{Json, json};
 
 pub mod routes {
-    use crate::auth::Level1;
+    //use crate::auth::Level1;
+    //pub async fn new_post<'a>(conn: DbConn, new_entry: Json<NewBlogEntryWithTags>, _x: Level1)
 
     use super::*;
-    use helper::*;
-    use serde::Deserialize;
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    pub struct PostAndTags {
+        post: BlogEntry,
+        tags: Vec<Tag>,
+    }
 
     pub enum PostFields {
         Id(i32),
@@ -25,7 +30,42 @@ pub mod routes {
         Content(String,)
     }
 
-    pub fn validation(qp: String) -> Option<PostFields> {
+    #[derive(Debug, serde::Deserialize, Insertable)]
+    #[diesel(table_name = blog)]
+    pub struct NewPost {
+        pub title: String,
+        pub author: String,
+        pub created: Option<chrono::NaiveDateTime>,
+        pub last_updated: Option<chrono::NaiveDate>,
+        pub content: Option<String>,
+    }
+
+    #[derive(Debug, serde::Deserialize, Insertable, Identifiable, AsChangeset)]
+    #[diesel(table_name = blog)]
+    struct UpdatePost {
+        pub id: i32,
+        pub title: String,
+        pub author: String,
+        pub created: Option<chrono::NaiveDateTime>,
+        pub last_updated: Option<chrono::NaiveDate>,
+        pub content: Option<String>,
+    }
+
+    #[derive(Debug, serde::Serialize, serde::Deserialize, Queryable, Clone)]
+    struct NewBlogEntryWithTags {
+        pub title: String,
+        pub author: String,
+        pub content: String,
+        pub tags: Vec<String>,
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    pub struct Tags {
+        id: Option<Vec<i32>>,
+        name: Option<Vec<String>>,
+    }
+
+    fn validation(qp: String) -> Option<PostFields> {
         // Verify that the query parameter is valid in format
         if let Some((k, v)) = qp.split_once('=') {
             match k.to_lowercase().as_str() {
@@ -55,7 +95,7 @@ pub mod routes {
         } else {None}
     }
 
-    pub async fn parse_and_query(params: QParams, conn: &DbConn) -> QueryResult<Vec<BlogEntry>> {
+    async fn parse_and_query(params: QParams, conn: &DbConn) -> QueryResult<Vec<BlogEntry>> {
         //https://docs.diesel.rs/2.0.x/diesel/prelude/trait.QueryDsl.html#method.filter
         conn.run(move |c| {
 
@@ -140,7 +180,6 @@ pub mod routes {
             }
 
             for o in params.order {
-                println!("HERE {}", o);
                 match o.to_lowercase().as_str() {
                     "id" => query = query.then_order_by(blog::id.asc()),
                     "-id" => query = query.then_order_by(blog::id.desc()),
@@ -166,356 +205,327 @@ pub mod routes {
         }).await 
     }
 
-    #[get("/?<params..>")]
-    pub async fn get_posts(params: QParams, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+    pub async fn post_and_tags(params: QParams, conn: &DbConn) -> Result<Vec<PostAndTags>, status::Custom<Json<AResponse>>> {
+        //Given a vec of BlogEntry structs retrieve tags on each of the posts
         //https://diesel.rs/guides/relations.html#many-to-many-or-mn
         //https://docs.rs/diesel/latest/diesel/prelude/trait.QueryDsl.html#method.group_by
-        //http://localhost:8001/api/posts?filter.eq=id=31&filter.eq=id=33
 
         let target_posts = match parse_and_query(params, &conn).await {
             Ok(posts) => posts,
-                //Ok(Json(AResponse::_200(Some(json!(posts))))),
             Err(e) => 
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
-        
+
         conn.run(move |c| {
-
-            let tags_x: Vec<(BlogTags, Tag)> = match BlogTags::belonging_to(&target_posts) 
-                    .inner_join(tag::table)
-                    .select(  (BlogTags::as_select(), Tag::as_select()) )
-                    .load(c)
-            {
-                Ok(tags_x) => tags_x,
-                Err(e) =>  return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
-            };
-
-            let test = tags_x
-            .grouped_by(&target_posts);
-            println!("{:?}", &target_posts);
-            println!("{:?}", test);
-
             let tags: Vec<(BlogTags, Tag)> = match BlogTags::belonging_to(&target_posts) 
-            .inner_join(tag::table)
-            .select(  (BlogTags::as_select(), Tag::as_select()) )
-            .load(c)
-            {
-                Ok(tags) => tags,
-                Err(e) =>  return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
-            };
+                .inner_join(tag::table)
+                .select(  (BlogTags::as_select(), Tag::as_select()) )
+                .load(c)
+                {
+                    Ok(tags) => tags,
+                    Err(e) => 
+                        return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+                };
 
             let posts_and_their_tags: Vec<(BlogEntry, Vec<Tag>)> = tags
-                .grouped_by(&target_posts) //Vec<()
-                .into_iter() //Vec<(target_poss
-                .zip(target_posts) // 
-                .map(|(bt, be)|
+                .grouped_by(&target_posts) // A vec of vec of tuples of BlogTags and Tag. They are indexed to target_posts
+                .into_iter() //take ownership of each vec of tuples
+                .zip(target_posts) // left side of zip is vec entry of tuples, right side is a target_post
+                .map(|(bt, be)| //Remove the BlogTags entries
                         (be, bt.into_iter().map(|(_, bt)| bt)
-                    .collect()))
+                        .collect()))
                 .collect();
-            println!("{:?}", &posts_and_their_tags);
-            println!("{}", json!(&posts_and_their_tags));
-            Ok(Json(AResponse::_200(Some(json!(posts_and_their_tags)))))
-        }).await
 
+            //Clean up the json format a bit
+            let mut result: Vec<PostAndTags> = Vec::with_capacity(10);
+            for (p, t) in posts_and_their_tags {
+                result.push(PostAndTags { post: p, tags: t });
+            };
+            Ok(result)
+        }).await
+    }
+
+    async fn get_a_post_id( conn: &DbConn, title: &String, author: &String) -> Option<i32> {
+        //mysql does not return an id after creating a new entry. This helper function does only that.
+        let (title, author) = (title.clone(), author.clone());
+        match conn.run(  |c| {
+            blog::table
+                .filter(blog::author.eq(author))
+                .filter(blog::title.eq(title))
+                .select(blog::id)
+                .first::<i32>(c)
+        }).await {
+            Ok(id) => Some(id),
+            Err(_) => None,
+        }
+    }
+
+    fn validate_user_input(p: &NewPost) -> Result<(), status::Custom<Json<AResponse>>> {
+        //Diesel does not have an error code for invalid input. Manually check.
+        let mut messages = Vec::new();
+        if !(1..=100).contains(&p.title.len()) {
+            messages.push(json!({"field": "title", "message":  "Valid length is 1 to 100 chars."}));
+        };
+        if !(1..=100).contains(&p.author.len()) {
+            messages.push(json!({"field": "author", "message":  "Valid length is 1 to 100 chars."}));
+        };
+        
+        match messages.len() 
+        {
+            0 => Ok(()),
+            _ => Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
+            Some(String::from("Correct input and try again.")),
+                    Some(String::from("INVALID_INPUT")),
+            Some(json!(messages))))))
+        
+        }
+    }
+
+    async fn retrieve_one_post(tag_id: i32, conn: &DbConn) -> Result< Vec<BlogEntry>, status::Custom<Json<AResponse>> > {
+        //Given an id, return a vec of BlogEntry with a single entry or an error 404 / 500
+ 
+        let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", tag_id)]));
+        
+        match parse_and_query(q_params, &conn).await {
+            Ok(post) => {
+                match post.len() {
+                    1 => Ok(post),
+                    0 => Err(status::Custom(Status::NotFound, Json(AResponse::_404(
+                            Some(String::from("Could not locate post with provided id.")))))),
+                    _ => Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))),
+                }
+            },
+            Err(e) => 
+                Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+        }
+
+    }
+
+    #[get("/?<params..>")]
+    pub async fn get_posts(params: QParams, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+        match post_and_tags(params, &conn).await
+        {
+            Ok(posts) => Ok(Json(AResponse::_200(Some(json!(posts))))),
+            Err(e) => Err(e),
+        }
     }
 
     #[get("/<id>")]
     pub async fn get_post(id: i32, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
         let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", id)]));
-        match parse_and_query(q_params, &conn).await {
+        match post_and_tags(q_params, &conn).await
+        {
             Ok(posts) => match posts.len() {
-                0 => Err(status::Custom(Status::NotFound, Json(AResponse::_404(None)))),
+                0 => return Err(status::Custom(Status::NotFound, Json(AResponse::_404(None)))),
                 _ => Ok(Json(AResponse::_200(Some(json!(posts))))),
-            }    
+            }
+            
+            Err(e) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+        }
+    }
+
+    #[post("/", format="json", data="<new_post>")]
+    pub async fn post_post(conn: DbConn, new_post: Json<NewPost>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
+        //Do not accept tags with a new post. User should attach tags in a seperate request.
+        validate_user_input(&new_post)?;
+        
+        let (post_title, post_author) = (&new_post.title.clone(), &new_post.author.clone());
+        
+        
+        match conn.run(move |c| {
+            diesel::insert_into(blog::table)
+            .values(&new_post.into_inner())
+            .execute(c)
+        }).await {
+            Ok(_) => {
+                //Successfully created post, now retrieve it's id
+                match get_a_post_id(&conn, post_title, post_author).await {
+                    Some(id) => {
+                        let uri = uri!("/api/posts/", get_post(id)).to_string();
+                        let body = json!(AResponse::_201(Some(uri.clone()))).to_string();
+                        Ok(status::Created::new(uri).body(body))
+                    },
+                    None => Ok(status::Created::new("")),//Or maybe this should be a 500?
+                }
+            },
+            Err(DatabaseError(UniqueViolation, d)) => 
+                Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
+                    Some(String::from(d.message())), 
+                    Some(String::from("UNIQUE_VIOLATION")),
+                    None)))),
+            
+            Err(DatabaseError(NotNullViolation, d)) => 
+                Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
+                    Some(String::from(d.message())), 
+                    Some(String::from("NOT_NULL_VIOLATION")),
+                    None)))),
+            
             Err(e) => 
                 Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         }
     }
 
-    /* #[get("/<id>")]
-    pub async fn get_post_by_id(id: i32, conn: DbConn) -> Result< Value, status::Custom<Value>> {
-        match conn.run(move |c| {
-            blog::table
-                .filter(blog::id.eq(id))
-                .load::<BlogEntry>(c)
-            }).await
-        {
-            Ok(entry) => {
-                let x = get_blog_entries_and_tags(&conn, entry).await;
-                return Ok(json!(x))},
-            Err(e) => Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
-        }
-    } */
+    #[patch("/<id>",  format="json", data="<new_post>")]
+    pub async fn patch_post(id: i32, conn: DbConn, new_post: Json<NewPost>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+        //Do not accept tags with a patch. User should attach tags in a seperate request.
+        validate_user_input(&new_post)?;
 
-    #[get("/<id>/tags")]
-    pub async fn get_tags_on_post(id: i32, conn: DbConn) -> Result< Value, status::Custom<Value>> {
         match conn.run(move |c| {
-            blog::table
-                .filter(blog::id.eq(id))
-                .load::<BlogEntry>(c)
-            }).await
-        {
-            Ok(entry) => {
-                let x = get_blog_entries_and_tags(&conn, entry).await;
-                return Ok(json!(x))},
-            Err(e) => Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
+            let updated_post = 
+                UpdatePost {
+                    id, 
+                    title: new_post.title.clone(),
+                    author: new_post.author.clone(),
+                    created: None,//Some(new_post.created.unwrap_or_else(|| chrono::offset::Local::now().naive_local())),
+                    last_updated: Some(chrono::offset::Local::now().date_naive()),
+                    content: new_post.content.clone(),
+                };
+            diesel::update(&updated_post).set(&updated_post).execute(c)
+            
+        }).await {
+            Ok(rows) => {
+                match rows {
+                    1 => Ok(status::NoContent),
+                    0 => Err(status::Custom(Status::NotFound, Json(AResponse::_404(
+                            Some(String::from("Could not locate post with provided id.")))))),
+                    _ => Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))),
+                }
+            }
+
+            Err(DatabaseError(UniqueViolation, d)) => 
+                Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
+                    Some(String::from(d.message())), 
+                    Some(String::from("UNIQUE_VIOLATION")),
+                    None)))),
+            
+            Err(DatabaseError(NotNullViolation, d)) => 
+                Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
+                    Some(String::from(d.message())), 
+                    Some(String::from("NOT_NULL_VIOLATION")),
+                    None)))),
+            
+            Err(QueryBuilderError(_)) => 
+                Err(status::Custom(Status::BadRequest, Json(AResponse::_400(
+                    Some(String::from("You need to provide the 'title' and 'author' in the body of your request.")))))),
+
+            Err(e) => 
+                Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         }
     }
 
-    #[get("/title?<titles>")]
-    pub async fn get_post_by_title(titles: Vec<String>, conn: DbConn) -> Result< Value, status::Custom<Value>> {
-        println!("{:?}", titles);
-        match conn.run(move |c| {
-            blog::table
-                .order(blog::id.desc())
-                .filter(blog::title.eq_any(titles))
-                .load::<BlogEntry>(c)
-            }).await
-        {
-            Ok(entries) => {
-                let x = get_blog_entries_and_tags(&conn, entries).await;
-                return Ok(json!(x))},
-            Err(e) => Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
-        }
-    }
- 
-    #[get("/author?<authors>")]
-    pub async fn get_post_by_author(authors: Vec<String>, conn: DbConn) -> Result< Value, status::Custom<Value>> {
-        match conn.run(move |c| {
-            blog::table
-                .order(blog::id.desc())
-                .filter(blog::author.eq_any(authors))
-                .load::<BlogEntry>(c)
-            }).await
-        {
-            Ok(entries) => {
-                let x = get_blog_entries_and_tags(&conn, entries).await;
-                return Ok(json!(x))},
-            Err(e) => Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
+    #[delete("/<id>")]
+    pub async fn delete_post(id: i32, conn: DbConn) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
+        //Retrieve the target post
+        let my_post = retrieve_one_post(id, &conn).await?;
+
+        //Remove the associated blog_tags for the post
+        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Post(my_post)).await?;
+
+        //Now remove the post
+        match conn.run(move |c|{
+            diesel::delete(blog::table.filter(blog::id.eq(id))).execute(c)
+        }).await {
+            Ok(_) => return Ok(Json(AResponse::_200(None))),
+            Err(e) => 
+                return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         }
     }
 
-     #[get("/?<tags>", rank = 12)]
-    pub async fn get_post_by_tags(tags: Vec<String>, conn: DbConn) -> Result< Value, status::Custom<Value>> {
-        let blog_ids = match conn.run(move |c| {
-            blog_tags::table
-            .inner_join(tag::table)
-            .filter(tag::name.eq_any(tags))
-            .select(blog_tags::blog_id)
-            .distinct()
-            .load::<i32>(c)
-            }).await
-        {
-            Ok(results) => results,
-            Err(e) => return Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
+    #[patch("/<post_id>/tags/<tag_id>")]
+    pub async fn patch_post_tag(post_id: i32, tag_id: i32, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+        //Retrieve the target post
+        let my_post = retrieve_one_post(post_id, &conn).await?;
+
+        //Retrieve the target tags
+        let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", tag_id)]));
+
+        let tags = match crate::tag::routes::parse_and_query(q_params, &conn).await {
+            Ok(tags) => tags,
+            Err(e) => 
+                return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
-    
-        match conn.run(|c| {
-            blog::table
-            .order(blog::id.desc())
-            .filter(blog::id.eq_any(blog_ids))
-            .load::<BlogEntry>(c)
-        }).await
-        {
-            Ok(entries) => {
-                let x = get_blog_entries_and_tags(&conn, entries).await;
-                return Ok(json!(x))},
-            Err(e) => return Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
-        }
+
+        crate::blog_tags::add_entries(&conn, my_post, tags).await?;
+        Ok(status::NoContent)
+
     }
 
-    #[get("/?<tags>&<from>&<to>&<start>&<step>", rank = 10)]
-    pub async fn get_post_by_tags_from_to(tags: Vec<String>, from: &str, to: &str, start: i64, step: i64, conn: DbConn) -> Result< Value, status::Custom<Value>> { 
+    #[patch("/<id>/tags?<tag_params..>", rank = 2)]
+    pub async fn patch_post_tags(id: i32, tag_params: QParams, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+        //Retrieve the target post
+        let my_post = retrieve_one_post(id, &conn).await?;
 
-        let from = date_from_string(from)?;
-        let to = date_from_string(to)?;
-
-        let blog_ids = match conn.run(move |c| {
-            blog_tags::table
-            .inner_join(tag::table)
-            .filter(tag::name.eq_any(tags))
-            .select(blog_tags::blog_id)
-            .distinct()
-            .limit(step)
-            .offset(start)
-            .load::<i32>(c)
-            }).await
-        {
-            Ok(results) => results,
-            Err(e) => return Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
+        //Retrieve the target tags
+        let tags = match crate::tag::routes::parse_and_query(tag_params, &conn).await {
+            Ok(tags) => tags,
+            Err(e) => 
+                return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
-        match conn.run(move |c| {
-            blog::table
-            .order(blog::id.desc())
-            .filter(blog::id.eq_any(blog_ids))
-            .filter(blog::created.between(from, to))
-            .load::<BlogEntry>(c)
-        }).await
-        {
-            Ok(entries) => {
-                let x = get_blog_entries_and_tags(&conn, entries).await;
-                return Ok(json!(x))},
-            Err(e) => return Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
-        }
+        crate::blog_tags::add_entries(&conn, my_post, tags).await?;
+        Ok(status::NoContent)      
     }
 
-    #[get("/?<from>&<to>&<start>&<step>", rank = 11)]
-    pub async fn get_post_by_from_to(from: &str, to: &str, start: i64, step: i64, conn: DbConn) -> Result< Value, status::Custom<Value>> { 
-        //TODO: Cannot get to this function. If I swap the rank with get_entry_by_tag_from_to then I cannot reach that function.
-        //I would think that these would be different routes because they have different number of queries.
+    #[patch("/<id>/tags", format="json", data="<tags>", rank = 1)]
+    pub async fn patch_post_tags_form(id: i32, tags: Json<Tags>, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+        //Retrieve the target post
+        let my_post = retrieve_one_post(id, &conn).await?;
+
+        //Retrieve the target tags
+        let mut q = tags.id.clone().unwrap_or_default().into_iter().map(|id| format!("id={id}")).collect::<Vec<String>>();
+        q.append(&mut tags.name.clone().unwrap_or_default().into_iter().map(|name| format!("name={name}")).collect::<Vec<String>>());
+        let q_params = QParams::new_filter(Filters::new_eq(q));
+
+        let tags = match crate::tag::routes::parse_and_query(q_params, &conn).await {
+            Ok(tags) => tags,
+            Err(e) => 
+                return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+        };
+        crate::blog_tags::add_entries(&conn, my_post, tags).await?;
+        Ok(status::NoContent)
         
-        let from = date_from_string(from)?;
-        let to = date_from_string(to)?;
-    
-        match conn.run(move |c| {
-            blog::table
-            .order(blog::id.desc())
-            .filter(blog::created.between(from, to))
-            .limit(step)
-            .offset(start)
-            .load::<BlogEntry>(c)
-        }).await
-        {
-            Ok(entries) => {
-                println!("{:?}", entries);
-                let x = get_blog_entries_and_tags(&conn, entries).await;
-                return Ok(json!(x))},
-            Err(e) => return Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
-        }
     }
 
-    #[derive(Deserialize)]
-    pub struct UpdatedPost {
-        pub title: String,
-        pub author: String,
-        pub content: String,
-        pub tags: Vec<String>,
-    }
+    #[put("/<id>/tags", format="json", data="<tags>")]
+    pub async fn put_post_tags_form(id: i32, tags: Json<Tags>, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+        //Retrieve the target post
+        let my_post = retrieve_one_post(id, &conn).await?;
 
-    #[post("/<id>", data = "<updated_entry>")]
-    pub async fn update_post(id: i32, conn: DbConn, updated_entry: Json<UpdatedPost>, _x: Level1) -> Result< Value, status::Custom<Value>> {
-        //Drop the post's current blog_tags entries.
-        match drop_blog_tags(&conn, id).await
-        {
-            Ok(_) => {},
-            Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("Failed to update the user. Failure occured during drop of entries in blog_tags. {}", e)))),
-        };
-        //Insert the tags from the update into the table tag.
-        match add_tag(&conn, updated_entry.tags.clone()).await
-        {
-            Ok(_) => {},
-            Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("Failed to update the user. Failure occured during insertion of entries in tag. {}", e)))),
-        };
-        //Insert the post update tags
-        let tag_row_count = match insert_blog_tags(&conn, id, updated_entry.tags.clone()).await
-        {
-            Ok(result) => result,
-            Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("Failed to update the user. Failure occured during insertion of entries in blog_tags. {}", e)))),
-        };
-        //Update the post
-        match conn.run(move |c| {
-            diesel::update(blog::table)
-            .filter(blog::id.eq(id))
-            .set((
-                blog::title.eq(updated_entry.title.clone()),
-                blog::author.eq(updated_entry.author.clone()),
-                blog::content.eq(updated_entry.content.clone())
-            ))
-            .execute(c)
-            }).await 
-        {
-            Ok(row_count) => Ok(json!(format!("Updated field(s) of {} post(s) and {} corresponding tag(s).", row_count, tag_row_count))),
-            Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("Failed to updat the user. {}", e)))),
-        }
-    }
+        //Retrieve the target tags
+        let mut q = tags.id.clone().unwrap_or_default().into_iter().map(|id| format!("id={id}")).collect::<Vec<String>>();
+        q.append(&mut tags.name.clone().unwrap_or_default().into_iter().map(|name| format!("name={name}")).collect::<Vec<String>>());
+        let q_params = QParams::new_filter(Filters::new_eq(q));
 
-    #[derive(Debug, serde::Serialize, serde::Deserialize, Queryable, Clone)]
-    pub struct NewBlogEntryWithTags {
-        pub title: String,
-        pub author: String,
-        pub content: String,
-        pub tags: Vec<String>,
-    }
-    #[post("/", data = "<new_entry>")]
-    pub async fn new_post<'a>(conn: DbConn, new_entry: Json<NewBlogEntryWithTags>, _x: Level1) -> Result< Value, status::Custom<Value>> {
-        //The borrow checker complains about trying to use new_entry in the closure because conn (with lifetime of static) could outlive new_entry.
-        //Move into the closure will not work because the other closure will need access.
-        //I had trouble adding the lifetimes to these variables.
-        //For now use this nasty duct tape and just clone up everything.
-        //In the future get help with what are possible solutions here and refactor.
-        //Tried having the closure return the closure, but got stuck on "partial move" error when I tried to clone it.
-        //Another fix could be to generate my own DbConn. Though it seems rocket is configured to use them as guards https://api.rocket.rs/v0.4/rocket_contrib/databases/index.html
-        //Multiple connections could cause an issue with the id retrievale in this function as well.
-        //https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=6bf56811fc20b776972dd2f4ca11c572
-
-        let new_entry = new_entry.into_inner();
-        let new_entry_a = new_entry.clone();
-        let new_entry_b = new_entry.clone();
-
-        match conn.run(move |c: &mut MysqlConnection| {
-            //Insert the new post
-            diesel::insert_into(blog::table)
-            .values((
-                blog::title.eq(new_entry_a.title.clone()),
-                blog::author.eq(new_entry_a.author.clone()),
-                blog::content.eq(new_entry_a.content.clone())
-            ))
-            .execute(c)
-            }).await 
-        {
-            Ok(_) => (),
-            Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("Failed to create a new blog post. {}", e)))),
+        let tags = match crate::tag::routes::parse_and_query(q_params, &conn).await {
+            Ok(tags) => tags,
+            Err(e) => 
+                return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
+
+        //Remove any existing tags attached to the post
+        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Post(my_post.clone())).await?;
+
+        //Add new tags
+        crate::blog_tags::add_entries(&conn, my_post, tags).await?;
+        Ok(status::NoContent)
         
-        //Retrieve the id of this new blog post
-        let new_blog_id = match conn.run(move |c: &mut MysqlConnection| {
-            blog::table
-                .filter(blog::title.eq(new_entry_b.title.clone()))
-                .filter(blog::author.eq(new_entry_b.author.clone()))
-                .select(blog::id)
-                .first::<i32>(c)
-            }).await
-        {
-            Ok(entry) => entry,
-            Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("The new post could not be found. {}", e)))),
-        };
-
-        match add_tag(&conn, new_entry.tags.clone()).await
-        {
-            Ok(_) => {},
-            Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("The post was created. A failure occured during insertion of entries in tag. {}", e)))),
-        }
-
-        match insert_blog_tags(&conn, new_blog_id, new_entry.tags).await
-        {
-            Ok(_) => {},
-            Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("The post was created. A failure occured during insertion of entries in blog_tags. {}", e)))),
-        }
-        
-        Ok(json!(format!("Added a new post with id {}.", new_blog_id)))
     }
 
-    /*
-    #[post("/<id>/inactivate", format = "json", data="<_new_entry>")]
-    pub async fn inactivate_entry(id: i32, __conn:DbConn, _new_entry: Json<NewBlogEntryWithTags>) {
-        //db field not yet added
-        //Perhaps this will just be added to the update function.
-    }
-    */
+    #[delete("/<id>/tag/<tag_id>")]
+    pub async fn delete_post_tag(id: i32, tag_id: i32, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+        //Retrieve the target post
+        let my_post = retrieve_one_post(id, &conn).await?;
 
-}
+        //Retrieve the target tags
+        let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", tag_id)]));
 
-pub mod helper {
-    use chrono::NaiveDateTime;
-
-    use super::*;
-    
-    pub fn date_from_string(date: &str) -> Result< NaiveDateTime, status::Custom<Value>> {
-        let date = match chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d") 
-        {
-            Ok(result) => result.and_hms(0,0,0),
-            Err(e) => return Err(status::Custom(Status::BadRequest , json!(format!("{}", e)))),
+        let my_tags = match crate::tag::routes::parse_and_query(q_params, &conn).await {
+            Ok(tags) => tags,
+            Err(e) => 
+                return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
-        Ok(date)
+
+        //Remove the associated blog_tags for the post and tag
+        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::PostTags((my_post, my_tags))).await?;
+        Ok(status::NoContent)
     }
 }

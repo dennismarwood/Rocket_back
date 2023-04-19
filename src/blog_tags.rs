@@ -2,46 +2,67 @@ use crate::config::DbConn;
 use crate::schema::{blog_tags, tag};
 use crate::tag::helper::get_tag_ids;
 use diesel::prelude::*;
-use crate::models::{BlogTags, BlogEntry, Tag};
+use crate::models::{BlogTags, BlogEntry, Tag, AResponse};
 use std::iter::zip;
+use rocket::response::status;
+use rocket::http::Status;
+use rocket::serde::json::{Json, json};
 
 pub enum BelongsTo {
-    #[allow(dead_code)]
-    BlogEntry(BlogEntry),
+    Post(Vec<BlogEntry>),
     Tag(Vec<Tag>),
+    PostTags((Vec<BlogEntry>, Vec<Tag>)),
 }
-
-
-pub async fn delete_entries(conn: &DbConn, key: BelongsTo) -> Result<usize, diesel::result::Error> {
+//TODO can types remove this duplicated code?
+pub async fn delete_entries(conn: &DbConn, key: BelongsTo) -> Result<usize, status::Custom<Json<AResponse>> >{
     conn.run(move |c| {
-        match key {
-            BelongsTo::BlogEntry(v) => diesel::delete(BlogTags::belonging_to(&v)).execute(c),
-            BelongsTo::Tag(v)  => diesel::delete(BlogTags::belonging_to(&v)).execute(c),
+        match key 
+        {
+            BelongsTo::Post(v) => match diesel::delete(BlogTags::belonging_to(&v)).execute(c)
+            {
+                Ok(count) => Ok(count),
+                Err(e) => Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+
+            }
+            BelongsTo::Tag(v)  => match diesel::delete(BlogTags::belonging_to(&v)).execute(c) 
+            {
+                Ok(count) => Ok(count),
+                Err(e) => Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+            }
+            BelongsTo::PostTags((posts, tags)) => match 
+                diesel::delete(
+                    BlogTags::belonging_to(&posts)//blog_tags rows matching posts
+                        .filter(blog_tags::tag_id
+                            .eq_any(&tags.into_iter().map(|tag| tag.id).collect::<Vec<i32>>())//blog_tags rows matching posts and tags
+                        )
+                ).execute(c)
+            { 
+                Ok(count) => Ok(count),
+                Err(e) => Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+            }
         }
     }).await
 }
 
-pub async fn drop_blog_tags(conn: &DbConn, blog_id: i32) -> Result< usize, diesel::result::Error > {
-    //Remove all entries from blog_tags that match the blog_id you pass in.
+pub async fn add_entries(conn: &DbConn, mut post: Vec<BlogEntry>, tags: Vec<Tag>) -> Result<usize, status::Custom<Json<AResponse>>> {
+    let post = match post.pop() {
+        Some(p) => p,
+        None => return Ok(0),
+    };
 
-    //Gather tag ids
+    //create Vec<(blog_id, tag_id)
+    let entries =
+        tags.into_iter().map(|tag| (blog_tags::blog_id.eq(post.id), blog_tags::tag_id.eq(tag.id))).collect::<Vec<_>>();
+
+    //add blog_id and tag_id to blog_tags table
     conn.run(move |c| {
-
-        let blog_tags_ids = 
-        blog_tags::table
-        .filter(blog_tags::blog_id.eq(blog_id))
-        .select(blog_tags::id)
-        .load::<i32>(c)?;
-
-        //Delete any entries where tag_id and blog_id are specified.
-        diesel::delete(
-            blog_tags::table
-            .filter(blog_tags::id.eq_any(blog_tags_ids))
-        )
-        .execute(c)
-
-    }).await     
+        match diesel::insert_into(blog_tags::table).values(entries).execute(c) {
+            Ok(tag_count) => Ok(tag_count),
+            Err(e) => Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+        }
+    }).await
 }
+
 
 pub async fn insert_blog_tags(conn: &DbConn, blog_id: i32, tag_names: Vec<String>) -> Result< usize, diesel::result::Error> {
     //Recieve a vector of tag names, convert them to the ids

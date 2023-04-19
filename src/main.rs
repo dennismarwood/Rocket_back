@@ -76,20 +76,20 @@ fn rocket() -> _ {
             get_tags,
             patch_tag,
             post_tag,
-            delete_tag
+            delete_tag,
+            tag::routes::get_posts,
         ])
         .mount("/api/posts", routes![
-            get_posts,
+            post::routes::get_posts,
             get_post,
-            //get_post_by_id,
-            get_tags_on_post,
-            get_post_by_title,
-            get_post_by_author, 
-            get_post_by_tags,
-            get_post_by_tags_from_to,
-            get_post_by_from_to,
-            update_post,
-            new_post
+            post_post,
+            patch_post,
+            delete_post,
+            patch_post_tag,
+            patch_post_tags,
+            patch_post_tags_form,
+            put_post_tags_form,
+            delete_post_tag
         ])
         .mount("/api/roles", routes![
             get_roles,

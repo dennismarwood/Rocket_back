@@ -1,6 +1,6 @@
 use crate::config::DbConn;
-use crate::schema::{tag};
-use crate::models::{Tag, AResponse, QParams, Filters};
+use crate::schema::{tag, blog_tags};
+use crate::models::{Tag, AResponse, QParams, Filters, BlogTags};
 use diesel::prelude::*;
 use rocket::serde::json::{Json, json};
 use rocket::http::{Status};
@@ -52,6 +52,11 @@ pub mod routes {
         conn.run(move |c| {
 
             let mut query = tag::table.into_boxed::<Mysql>();
+            //page indexing
+            let start: i64 = params.start.unwrap_or(0);
+            let step: i64 = params.step.unwrap_or(QParams::calculate_limit(&params));
+            query = query.offset(start);
+            query = query.limit(step);
 
             for f in params.filter.eq {
                 if let Some(query_parameter) = validation(f){
@@ -125,13 +130,9 @@ pub mod routes {
                     _ => {},
                 }
             }
-
-            //page indexing
-            let start: i64 = params.start.unwrap_or(0);
-            let step: i64 = params.step.unwrap_or(10);
-            query = query.limit(step);
-            query = query.offset(start);
+            
             query.load::<Tag>(c)
+            
 
         }).await 
     }
@@ -297,6 +298,44 @@ pub mod routes {
         }
     }
 
+    #[get("/<id>/posts")]
+    pub async fn get_posts(id: i32, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+        //Retrieve the target tag
+        let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", id)]));
+  
+        let my_tag = match parse_and_query(q_params, &conn).await {
+            Ok(tags) => {
+                match tags.len() {
+                    1 => tags,
+                    0 => return Err(status::Custom(Status::NotFound, Json(AResponse::_404(
+                            Some(String::from("Could not locate tag with provided id.")))))),
+                    _ => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))),
+                }
+            },
+            Err(e) => 
+                return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+        };
+
+        //Retrieve the post ids that have the specified tag
+        match conn.run(move |c|{
+            let post_ids = match BlogTags::belonging_to(&my_tag).select(blog_tags::blog_id).distinct().load::<i32>(c) {
+                Ok(post_ids) => post_ids,
+                Err(e) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))),
+            };
+            let q = post_ids.into_iter().map(|id| format!("id={id}")).collect::<Vec<String>>();
+            let q_params = QParams::new_filter(Filters::new_eq(q));
+            Ok(q_params)
+        }).await {
+            Ok(q_params) => match crate::post::routes::post_and_tags(q_params, &conn).await
+            {
+                Ok(posts) =>  Ok(Json(AResponse::_200(Some(json!(posts))))),                
+                Err(e) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+            },
+            Err(e) => 
+                Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+        }
+    }
+
 }
 
 pub mod helper {
@@ -337,29 +376,6 @@ pub mod helper {
             Err(e) => return Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
         }
     } */
-    
-    pub async fn add_tag(conn: &DbConn, mut new_tags: Vec<String>) -> Result< usize, diesel::result::Error> {
-        //The tag.name column has a unique constraint on it. Any duplicates passed into it with the ".values"
-        //will cause all the entries to fail.
 
-        let new_tags_copy = new_tags.clone();
 
-        let duplicate_tags = conn.run(|c| {
-            tag::table
-            .filter(tag::name.eq_any(new_tags_copy))
-            .select(tag::name)
-            .load::<String>(c)
-        }).await?;
-
-        new_tags.retain(|x| {!duplicate_tags.contains(&x.to_string())});
-
-        let entries: Vec<_>  = new_tags.into_iter().map(|s| tag::name.eq(s)).collect();
-
-        conn.run(|c| {
-            diesel::insert_into(tag::table)
-            .values(entries)
-            .execute(c)
-        }).await
-
-    }
 }
