@@ -415,10 +415,10 @@ pub mod routes {
     #[delete("/<id>")]
     pub async fn delete(id: i32, conn: DbConn) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
-        let my_post = retrieve_one_post(id, &conn).await?;
+        let target_post = retrieve_one_post(id, &conn).await?;
 
         //Remove the associated blog_tags for the post
-        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Post(my_post)).await?;
+        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Post(target_post)).await?;
 
         //Now remove the post
         match conn.run(move |c|{
@@ -433,7 +433,7 @@ pub mod routes {
     #[patch("/<post_id>/tags/<tag_id>")]
     pub async fn patch_post_tag(post_id: i32, tag_id: i32, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
-        let my_post = retrieve_one_post(post_id, &conn).await?;
+        let target_post = retrieve_one_post(post_id, &conn).await?;
 
         //Retrieve the target tags
         let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", tag_id)]));
@@ -444,7 +444,7 @@ pub mod routes {
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
 
-        crate::blog_tags::add_entries(&conn, my_post, tags).await?;
+        crate::blog_tags::add_entries(&conn, target_post, tags).await?;
         Ok(status::NoContent)
 
     }
@@ -452,7 +452,7 @@ pub mod routes {
     #[patch("/<id>/tags?<tag_params..>", rank = 2)]
     pub async fn patch_post_tags(id: i32, tag_params: QParams, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
-        let my_post = retrieve_one_post(id, &conn).await?;
+        let target_post = retrieve_one_post(id, &conn).await?;
 
         //Retrieve the target tags
         let tags = match crate::tag::routes::parse_and_query(tag_params, &conn).await {
@@ -460,14 +460,14 @@ pub mod routes {
             Err(e) => 
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
-        crate::blog_tags::add_entries(&conn, my_post, tags).await?;
+        crate::blog_tags::add_entries(&conn, target_post, tags).await?;
         Ok(status::NoContent)      
     }
 
     #[patch("/<id>/tags", format="json", data="<tags>", rank = 1)]
     pub async fn patch_post_tags_form(id: i32, tags: Json<Tags>, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
-        let my_post = retrieve_one_post(id, &conn).await?;
+        let target_post = retrieve_one_post(id, &conn).await?;
 
         //Retrieve the target tags
         let mut q = tags.id.clone().unwrap_or_default().into_iter().map(|id| format!("id={id}")).collect::<Vec<String>>();
@@ -479,7 +479,7 @@ pub mod routes {
             Err(e) => 
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
-        crate::blog_tags::add_entries(&conn, my_post, tags).await?;
+        crate::blog_tags::add_entries(&conn, target_post, tags).await?;
         Ok(status::NoContent)
         
     }
@@ -487,7 +487,7 @@ pub mod routes {
     #[put("/<id>/tags", format="json", data="<tags>")]
     pub async fn put_post_tags_form(id: i32, tags: Json<Tags>, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
-        let my_post = retrieve_one_post(id, &conn).await?;
+        let target_post = retrieve_one_post(id, &conn).await?;
 
         //Retrieve the target tags
         let mut q = tags.id.clone().unwrap_or_default().into_iter().map(|id| format!("id={id}")).collect::<Vec<String>>();
@@ -501,10 +501,10 @@ pub mod routes {
         };
 
         //Remove any existing tags attached to the post
-        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Post(my_post.clone())).await?;
+        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Post(target_post.clone())).await?;
 
         //Add new tags
-        crate::blog_tags::add_entries(&conn, my_post, tags).await?;
+        crate::blog_tags::add_entries(&conn, target_post, tags).await?;
         Ok(status::NoContent)
         
     }
@@ -512,7 +512,7 @@ pub mod routes {
     #[delete("/<id>/tag/<tag_id>")]
     pub async fn delete_post_tag(id: i32, tag_id: i32, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
-        let my_post = retrieve_one_post(id, &conn).await?;
+        let target_post = retrieve_one_post(id, &conn).await?;
 
         //Retrieve the target tags
         let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", tag_id)]));
@@ -524,7 +524,7 @@ pub mod routes {
         };
 
         //Remove the associated blog_tags for the post and tag
-        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::PostTags((my_post, my_tags))).await?;
+        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::PostTags((target_post, my_tags))).await?;
         Ok(status::NoContent)
     }
 }
