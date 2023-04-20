@@ -1,11 +1,9 @@
 use crate::config::DbConn;
-use crate::schema::{blog_tags, tag};
-use crate::tag::helper::get_tag_ids;
+use crate::models::{AResponse, BlogTags, BlogEntry, Tag};
+use crate::schema::{blog_tags};
 use diesel::prelude::*;
-use crate::models::{BlogTags, BlogEntry, Tag, AResponse};
-use std::iter::zip;
-use rocket::response::status;
 use rocket::http::Status;
+use rocket::response::status;
 use rocket::serde::json::{Json, json};
 
 pub enum BelongsTo {
@@ -63,8 +61,9 @@ pub async fn add_entries(conn: &DbConn, mut post: Vec<BlogEntry>, tags: Vec<Tag>
     }).await
 }
 
-
-pub async fn insert_blog_tags(conn: &DbConn, blog_id: i32, tag_names: Vec<String>) -> Result< usize, diesel::result::Error> {
+//use std::iter::zip;
+//use crate::schema::{tag};
+/* pub async fn insert_blog_tags(conn: &DbConn, blog_id: i32, tag_names: Vec<String>) -> Result< usize, diesel::result::Error> {
     //Recieve a vector of tag names, convert them to the ids
     let tag_ids = get_tag_ids(conn, tag_names).await?;
     //Convert the tag_ids into "blog_tags.tag_id" diesel types.
@@ -80,9 +79,9 @@ pub async fn insert_blog_tags(conn: &DbConn, blog_id: i32, tag_names: Vec<String
         .values(entries)
         .execute(c)
     }).await
-}
+} */
 
-pub async fn get_blog_entries_and_tags(conn: &DbConn, blog_entries: Vec<BlogEntry>) -> Vec<(BlogEntry, Vec<String>)> {
+/* pub async fn get_blog_entries_and_tags(conn: &DbConn, blog_entries: Vec<BlogEntry>) -> Vec<(BlogEntry, Vec<String>)> {
     //https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=9b9e461a84cf2906f30740d2294c1afa
     conn.run(move |c| {
         let blog_tags = BlogTags::belonging_to(&blog_entries)
@@ -100,4 +99,4 @@ pub async fn get_blog_entries_and_tags(conn: &DbConn, blog_entries: Vec<BlogEntr
         }
         blog_entries.into_iter().zip(res).collect::<Vec<_>>()
     }).await
-}
+} */

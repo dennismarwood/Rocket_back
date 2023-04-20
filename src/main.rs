@@ -72,19 +72,19 @@ fn rocket() -> _ {
         .mount("/", routes![home, openapi_yml])
         .mount("/api", routes![api_info])
         .mount("/api/tags", routes![
-            get_tag,
+            tag::routes::get,
             get_tags,
-            patch_tag,
-            post_tag,
-            delete_tag,
+            tag::routes::patch,
+            tag::routes::post,
+            tag::routes::delete,
             tag::routes::get_posts,
         ])
         .mount("/api/posts", routes![
             post::routes::get_posts,
-            get_post,
-            post_post,
-            patch_post,
-            delete_post,
+            post::routes::get,
+            post::routes::post,
+            post::routes::patch,
+            post::routes::delete,
             patch_post_tag,
             patch_post_tags,
             patch_post_tags_form,

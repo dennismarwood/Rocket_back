@@ -311,7 +311,7 @@ pub mod routes {
     }
 
     #[get("/<id>")]
-    pub async fn get_post(id: i32, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+    pub async fn get(id: i32, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
         let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", id)]));
         match post_and_tags(q_params, &conn).await
         {
@@ -325,12 +325,11 @@ pub mod routes {
     }
 
     #[post("/", format="json", data="<new_post>")]
-    pub async fn post_post(conn: DbConn, new_post: Json<NewPost>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
+    pub async fn post(conn: DbConn, new_post: Json<NewPost>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
         //Do not accept tags with a new post. User should attach tags in a seperate request.
         validate_user_input(&new_post)?;
         
         let (post_title, post_author) = (&new_post.title.clone(), &new_post.author.clone());
-        
         
         match conn.run(move |c| {
             diesel::insert_into(blog::table)
@@ -341,7 +340,7 @@ pub mod routes {
                 //Successfully created post, now retrieve it's id
                 match get_a_post_id(&conn, post_title, post_author).await {
                     Some(id) => {
-                        let uri = uri!("/api/posts/", get_post(id)).to_string();
+                        let uri = uri!("/api/posts/", get(id)).to_string();
                         let body = json!(AResponse::_201(Some(uri.clone()))).to_string();
                         Ok(status::Created::new(uri).body(body))
                     },
@@ -366,7 +365,7 @@ pub mod routes {
     }
 
     #[patch("/<id>",  format="json", data="<new_post>")]
-    pub async fn patch_post(id: i32, conn: DbConn, new_post: Json<NewPost>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+    pub async fn patch(id: i32, conn: DbConn, new_post: Json<NewPost>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
         //Do not accept tags with a patch. User should attach tags in a seperate request.
         validate_user_input(&new_post)?;
 
@@ -414,7 +413,7 @@ pub mod routes {
     }
 
     #[delete("/<id>")]
-    pub async fn delete_post(id: i32, conn: DbConn) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
+    pub async fn delete(id: i32, conn: DbConn) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
         let my_post = retrieve_one_post(id, &conn).await?;
 

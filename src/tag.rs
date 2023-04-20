@@ -2,18 +2,18 @@ use crate::config::DbConn;
 use crate::schema::{tag, blog_tags};
 use crate::models::{Tag, AResponse, QParams, Filters, BlogTags};
 use diesel::prelude::*;
-use rocket::serde::json::{Json, json};
-use rocket::http::{Status};
-use rocket::response::status;
 use diesel::result::DatabaseErrorKind::{UniqueViolation, NotNullViolation };
 use diesel::result::Error::{DatabaseError, QueryBuilderError};
+use rocket::http::{Status};
+use rocket::response::status;
+use rocket::serde::json::{Json, json};
 
 
 pub mod routes {
     use diesel::mysql::Mysql;
     use super::*;
 
-    pub enum TagFields {
+    enum TagFields {
         Id(i32),
         Name(String),
     }
@@ -26,12 +26,12 @@ pub mod routes {
     
     #[derive(Debug, AsChangeset, serde::Serialize, serde::Deserialize, Identifiable)]
     #[diesel(table_name = tag)]
-    pub struct UpdateTag {
+    struct UpdateTag {
         pub id: i32,
         pub name: Option<String>,
     }
 
-    pub fn validation(qp: String) -> Option<TagFields> {
+    fn validation(qp: String) -> Option<TagFields> {
         // Verify that the query parameter is valid in format
         if let Some((k, v)) = qp.split_once('=') {
             match k.to_lowercase().as_str() {
@@ -137,8 +137,26 @@ pub mod routes {
         }).await 
     }
 
+    async fn retrieve_one_tag(post_id: i32, conn: &DbConn) -> Result< Vec<Tag>, status::Custom<Json<AResponse>> > {
+        //Given an id, return a vec of Tag with a single entry or an error 404 / 500
+        let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", post_id)]));
+  
+        match parse_and_query(q_params, &conn).await {
+            Ok(tags) => {
+                match tags.len() {
+                    1 => Ok(tags),
+                    0 => Err(status::Custom(Status::NotFound, Json(AResponse::_404(
+                            Some(String::from("Could not locate tag with provided id.")))))),
+                    _ => Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))),
+                }
+            },
+            Err(e) => 
+                return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+        }
+    }
+
     #[get("/<id>")]
-    pub async fn get_tag(id: i32, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+    pub async fn get(id: i32, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
         let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", id)]));
         match parse_and_query(q_params, &conn).await {
             Ok(tags) => match tags.len() {
@@ -161,7 +179,7 @@ pub mod routes {
     }
 
     #[post("/", format="json", data="<new_tag>")]
-    pub async fn post_tag(conn: DbConn, new_tag: Json<NewTag>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
+    pub async fn post(conn: DbConn, new_tag: Json<NewTag>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
         //Diesel does not have an error code for invalid input. Manually check.
         if !(1..=100).contains(&new_tag.name.len()) {
             return Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
@@ -181,7 +199,7 @@ pub mod routes {
                 //Successfully created tag, now retrieve it's id
                 match helper::get_a_tag_id(&conn, tag_name).await {
                     Some(id) => {
-                        let uri = uri!("/api/tags/", get_tag(id)).to_string();
+                        let uri = uri!("/api/tags/", get(id)).to_string();
                         let body = json!(AResponse::_201(Some(uri.clone()))).to_string();
                         Ok(status::Created::new(uri).body(body))
                     },
@@ -206,7 +224,7 @@ pub mod routes {
     }
 
     #[patch("/<id>",  format="json", data="<new_tag>")]//Patch 204 400 404 422
-    pub async fn patch_tag(id: i32, conn: DbConn, new_tag: Json<NewTag>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+    pub async fn patch(id: i32, conn: DbConn, new_tag: Json<NewTag>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
         //Diesel does not have an error code for invalid input. Manually check.
         if !(1..=100).contains(&new_tag.name.len()) {
             return Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
@@ -253,33 +271,20 @@ pub mod routes {
     }
 
     #[delete("/<id>")]//Delete 204 400 404 422
-    pub async fn delete_tag(id: i32, conn: DbConn) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
+    pub async fn delete(id: i32, conn: DbConn) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
         //Retrieve the target tag
-        let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", id)]));
-  
-        let my_tag = match parse_and_query(q_params, &conn).await {
-            Ok(tags) => {
-                match tags.len() {
-                    1 => tags,
-                    0 => return Err(status::Custom(Status::NotFound, Json(AResponse::_404(
-                            Some(String::from("Could not locate tag with provided id.")))))),
-                    _ => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))),
-                }
-            },
-            Err(e) => 
-                return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
-        };
+        let target_tag = retrieve_one_tag(id, &conn).await?;
 
         let mut d = json!(
             {
-                "name": my_tag[0].name, 
-                "id": my_tag[0].id, 
+                "name": target_tag[0].name, 
+                "id": target_tag[0].id, 
                 "was on blogs": 0
             }
         );
 
         //Remove the associated blog_tags for the tag
-        let blog_tags_count = match crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Tag(my_tag)).await {
+        let blog_tags_count = match crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Tag(target_tag)).await {
             Ok(ok) => ok,
             Err(e) => 
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
@@ -301,26 +306,13 @@ pub mod routes {
     #[get("/<id>/posts")]
     pub async fn get_posts(id: i32, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
         //Retrieve the target tag
-        let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", id)]));
-  
-        let my_tag = match parse_and_query(q_params, &conn).await {
-            Ok(tags) => {
-                match tags.len() {
-                    1 => tags,
-                    0 => return Err(status::Custom(Status::NotFound, Json(AResponse::_404(
-                            Some(String::from("Could not locate tag with provided id.")))))),
-                    _ => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))),
-                }
-            },
-            Err(e) => 
-                return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
-        };
+        let target_tag = retrieve_one_tag(id, &conn).await?;
 
         //Retrieve the post ids that have the specified tag
         match conn.run(move |c|{
-            let post_ids = match BlogTags::belonging_to(&my_tag).select(blog_tags::blog_id).distinct().load::<i32>(c) {
+            let post_ids = match BlogTags::belonging_to(&target_tag).select(blog_tags::blog_id).distinct().load::<i32>(c) {
                 Ok(post_ids) => post_ids,
-                Err(e) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))),
+                Err(e) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
             };
             let q = post_ids.into_iter().map(|id| format!("id={id}")).collect::<Vec<String>>();
             let q_params = QParams::new_filter(Filters::new_eq(q));
@@ -353,29 +345,5 @@ pub mod helper {
             Err(_) => None,
         }
     }
-
-    pub async fn get_tag_ids(conn: &DbConn, name: Vec<String>) -> Result <Vec<i32>, diesel::result::Error> {
-        conn.run(  |c| {
-            tag::table
-                .filter(tag::name.eq_any(name))
-                .select(tag::id)
-                .load::<i32>(c)
-        }).await
-    }
-
-    /* pub async fn get_tags_on_post(blog_id: i32, conn: DbConn) -> Result< Value, status::Custom<Value>> {
-        match conn.run(move |c| {
-            blog_tags::table
-            .inner_join(tag::table)
-            .filter(blog_tags::blog_id.eq(blog_id))
-            .select((tag::id, tag::name))
-            .load::<Tag>(c)
-            }).await
-        {
-            Ok(results) => return Ok(json!(results)),
-            Err(e) => return Err(status::Custom(Status::NoContent , json!(format!("{}", e)))),
-        }
-    } */
-
 
 }
