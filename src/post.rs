@@ -517,14 +517,14 @@ pub mod routes {
         //Retrieve the target tags
         let q_params = QParams::new_filter(Filters::new_eq(vec![format!("id={}", tag_id)]));
 
-        let my_tags = match crate::tag::routes::parse_and_query(q_params, &conn).await {
+        let target_tags = match crate::tag::routes::parse_and_query(q_params, &conn).await {
             Ok(tags) => tags,
             Err(e) => 
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
 
         //Remove the associated blog_tags for the post and tag
-        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::PostTags((target_post, my_tags))).await?;
+        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::PostTags((target_post, target_tags))).await?;
         Ok(status::NoContent)
     }
 }
