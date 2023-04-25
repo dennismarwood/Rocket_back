@@ -295,7 +295,7 @@ pub mod routes {
             diesel::delete(tag::table.filter(tag::id.eq(id))).execute(c)
         }).await {
             Ok(_) => {
-                d["was on blogs"] = json!(blog_tags_count);
+                d["Affected posts"] = json!(blog_tags_count);
                 return Ok(Json(AResponse::_200(Some(d))));
             },
             Err(e) => 

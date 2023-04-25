@@ -59,6 +59,7 @@ pub mod routes {
         pub tags: Vec<String>,
     }
 
+    // TODO: Rename this, sounds like a collection of Tags not a collection of ids and names that can be used to retrieve Tags.
     #[derive(serde::Serialize, serde::Deserialize)]
     pub struct Tags {
         id: Option<Vec<i32>>,
@@ -366,6 +367,7 @@ pub mod routes {
 
     #[patch("/<id>",  format="json", data="<new_post>")]
     pub async fn patch(id: i32, conn: DbConn, new_post: Json<NewPost>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+        //TODO NewPost is the wrong data type here. Need one that just takes in the optional post title and optional post content.
         //Do not accept tags with a patch. User should attach tags in a seperate request.
         validate_user_input(&new_post)?;
 
@@ -373,7 +375,7 @@ pub mod routes {
             let updated_post = 
                 UpdatePost {
                     id, 
-                    title: new_post.title.clone(),
+                    title: new_post.title.clone(), //This needs to be updated to take in the user name from the jwt.
                     author: new_post.author.clone(),
                     created: None,//Some(new_post.created.unwrap_or_else(|| chrono::offset::Local::now().naive_local())),
                     last_updated: Some(chrono::offset::Local::now().date_naive()),
@@ -466,6 +468,19 @@ pub mod routes {
 
     #[patch("/<id>/tags", format="json", data="<tags>", rank = 1)]
     pub async fn patch_post_tags_form(id: i32, tags: Json<Tags>, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+        //TODO: 
+        // Updating the openapi docs has made me realize that all of my inserts are NOT "All or nothing" / transactional operations.
+        // A user could pass in invalid tags or a mix of valid / invalid tags and never be aware that their insert partially failed (code 207).
+        // Worse, some errors (tag name too long for example) would cause the transactiong to fail immediately. While other errors (a duplicate tag mixed in with new tags)
+        // would cause some entries to be added and others not while returning an error code (not a 207) to the user.
+        // I will check if diesel has a "test update" like function that I can use to make the updates / inserts transactional.
+        // Another option is to have the response be a vec of responses and provide a 207 and help as needed (non-transactional).
+        // I don't think this is an issue on entries that only take a single value such as /post/{post_id}/tag/{tag_id}.
+        // https://docs.diesel.rs/master/diesel/result/enum.Error.html#variant.RollbackTransaction
+        // This may also not be an issue on forms where the user must pass in a single entry such as post tag. Rocket will 404.
+        //
+
+
         //Retrieve the target post
         let target_post = retrieve_one_post(id, &conn).await?;
 
@@ -490,16 +505,26 @@ pub mod routes {
         let target_post = retrieve_one_post(id, &conn).await?;
 
         //Retrieve the target tags
+        //The user passes in json object with two optional vecs. One has ids the other has names. Gather up all tags that match elements from either vec.
         let mut q = tags.id.clone().unwrap_or_default().into_iter().map(|id| format!("id={id}")).collect::<Vec<String>>();
         q.append(&mut tags.name.clone().unwrap_or_default().into_iter().map(|name| format!("name={name}")).collect::<Vec<String>>());
         let q_params = QParams::new_filter(Filters::new_eq(q));
 
+        // Don't shadow this value.
         let tags = match crate::tag::routes::parse_and_query(q_params, &conn).await {
             Ok(tags) => tags,
             Err(e) => 
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
+        // Now is the time to confirm that every id and name in "tags" is found in the result of the parse_and_query.
+        // If not then we need to return an error saying what names or ids are badl
 
+        // TODO: Have that issue here where a user could have passed in non-existent or invalid tags for this post.
+        // I guess the invalid tags would only be duplicates, and we can just ignore that.
+        // But what if they passed in an id that was incorrect?
+        // I want qparams to be open ended on what thier query return. But I also want some strictness in this case to tell the user that they passed in bad data.
+
+        
         //Remove any existing tags attached to the post
         crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Post(target_post.clone())).await?;
 
@@ -509,7 +534,7 @@ pub mod routes {
         
     }
 
-    #[delete("/<id>/tag/<tag_id>")]
+    #[delete("/<id>/tags/<tag_id>")]
     pub async fn delete_post_tag(id: i32, tag_id: i32, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
         let target_post = retrieve_one_post(id, &conn).await?;

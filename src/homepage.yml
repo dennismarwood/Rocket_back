@@ -28,7 +28,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ListStartParam"
         - $ref: "#/components/parameters/ListStepParam" 
-        - $ref: "#/components/parameters/Filter"
+        #- $ref: "#/components/parameters/Filter"
         - $ref: "#/components/parameters/OrderBy" 
       responses:
         '200':
@@ -36,7 +36,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/user_list"
+                $ref: "#/components/schemas/users"
               example:
                 - id: 1
                   email: john.doe@example.com
@@ -56,18 +56,13 @@ paths:
                   role: 2
                   active: 0
                   last_access: "2022-03-22"
-        '204':
-          description: 'The search parameters yielded zero results'
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/204_error"
         default:
           description: An error has occured.
           content:
             application/json:
               schema: 
-                $ref: "#/components/schemas/server_error"
+                allOf:
+                  - $ref: "#/components/schemas/error"
     post:
       summary: Create a new user.
       description: When valid fieds are passed in the request body, a new user will be created. A 201 will contain the new user id.
@@ -114,12 +109,6 @@ paths:
                       type: string,
                       $ref: "#/components/schemas/user"
                     }
-        '404':
-          description: 'No user with that id exists.'
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/404_error"
     patch:
       summary: Update an existing user.
       tags:
@@ -131,12 +120,6 @@ paths:
             schema:
               $ref: "#/components/schemas/user_input"
       responses:
-        '204':
-          description: The user has been updated.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/user"
         '304':
           description: Failed to update the user.
           content:
@@ -158,18 +141,6 @@ paths:
             type: integer
             format: int32
       responses:
-        '204':
-          description: User deleted successfully.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/204_error"
-        '404':
-          description: User not found.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/404_error"
         '500':
           description: Internal server error.
           content:
@@ -193,7 +164,7 @@ paths:
             format: int32
         - $ref: "#/components/parameters/ListStartParam"
         - $ref: "#/components/parameters/ListStepParam" 
-        - $ref: "#/components/parameters/Filter"
+        #- $ref: "#/components/parameters/Filter"
         - $ref: "#/components/parameters/OrderBy" 
       responses:
         '200':
@@ -248,15 +219,19 @@ paths:
               }
   /posts:
     get:
-      summary: Return a list of blog entries.
-      description: The API allows users to filter the list of posts by specifying query parameters that match columns in the database. Additionally, users can control the number of results returned using the start and step parameters.
-      operationId: listPostV1
+      summary: Return a list of blog posts.
+      description: The API allows users to filter the type and quantity of posts by specifying query parameters that match columns in the database.
+      operationId: GetPostsV1
       tags:
         - Posts
       parameters:
         - $ref: "#/components/parameters/ListStartParam"
         - $ref: "#/components/parameters/ListStepParam" 
-        - $ref: "#/components/parameters/Filter"
+        - $ref: "#/components/parameters/Filter.eq"
+        - $ref: "#/components/parameters/Filter.le"
+        - $ref: "#/components/parameters/Filter.ge"
+        - $ref: "#/components/parameters/Filter.like"
+        - $ref: "#/components/parameters/Filter.between"
         - $ref: "#/components/parameters/OrderBy"
       responses:
         '200':
@@ -264,10 +239,24 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/post_list"
+                allOf:
+                - $ref: "#/components/schemas/success"
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/post_with_tags"
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     post:
       summary: Create a new post.
-      description: When valid fieds are passed in the request body, a new post will be created. A 201 will contain the new post id.
+      description: When valid fieds are passed in the request body, a new post will be created. A 201 will contain the new post id. The session jwt will be used to determine the author automatically.
       operationId: updatePostV1
       tags:
         - Posts
@@ -283,18 +272,21 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/post"
-        '400':
-          description: The request is invalid or malformed.
+                allOf:
+                  - $ref: "#/components/schemas/success_201"
+                  - type: object
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/400_error"  
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error" 
   /posts/{id}:
     get:
       summary: Return a single post.
       description: When a valid post id is passed in, a post object is returned.
-      operationId: listPostV1
+      operationId: GetPostV1
       tags:
         - Posts
       responses:
@@ -303,22 +295,23 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  payloads:
-                    type: array
-                    items: {  
-                      type: string,
-                      $ref: "#/components/schemas/post"
-                    }
-        '404':
-          description: 'No post with that id exists.'
+                allOf:
+                  - $ref: "#/components/schemas/success"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/post_with_tags"
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/404_error"
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     patch:
       summary: Update an existing Post.
+      description: Title and content of the post can be altered.
+      operationId: PatchPostV1
       tags:
         - Posts
       requestBody:
@@ -329,21 +322,18 @@ paths:
               $ref: "#/components/schemas/post_input"
       responses:
         '204':
-          description: The post has been updated.
+          description: The post has been updated. No further response.
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/post"
-        '304':
-          description: Failed to update the post.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/post"
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     delete:
       summary: Delete a post by ID
       description: Deletes the post identified by the given ID.
-      operationId: deletePost
+      operationId: DeletePostV1
       tags:
         - Posts
       parameters:
@@ -356,68 +346,90 @@ paths:
             format: int32
       responses:
         '204':
-          description: Post deleted successfully.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/204_error"
-        '404':
-          description: Post not found.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/404_error"
-        '500':
-          description: Internal server error.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/500_error"
-  /tags:
-    get:
-      summary: Return a list of post tags.
-      description: Use the start and step parameters to get tags.
-      operationId: listTagsV1
-      tags:
-        - Tags      
-      parameters:
-        - $ref: "#/components/parameters/ListStartParam"
-        - $ref: "#/components/parameters/ListStepParam" 
-        - $ref: "#/components/parameters/Filter"
-        - $ref: "#/components/parameters/OrderBy"              
-      responses:
-        '200':
-          description: A list of post tags.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  payloads:
-                    type: array
-                    items: {  
-                      type: array,
-                      items: {
-                        type: string,
-                        $ref: "#/components/schemas/post_tag"
-                      }
-                    }
-        '204':
-          description: 'The search parameters yielded zero results'
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/204_error"
+          description: The post has been deleted. No further response.
         default:
           description: An error has occured.
           content:
             application/json:
               schema: 
-                $ref: "#/components/schemas/server_error"
+                allOf:
+                  - $ref: "#/components/schemas/error"
+  /posts/{id}/tags:
+    patch: #params
+      summary: Add tags to a post.
+      description: Use either query params or pass along a form to add tags to a post. Note the **Request Body** drop down below.
+      operationId: PatchPostTagsV1
+      tags:
+        - Posts
+      parameters:
+        - $ref: "#/components/parameters/ListStartParam"
+        - $ref: "#/components/parameters/ListStepParam" 
+        - $ref: "#/components/parameters/Filter.eq"
+        - $ref: "#/components/parameters/Filter.le"
+        - $ref: "#/components/parameters/Filter.ge"
+        - $ref: "#/components/parameters/Filter.like"
+        - $ref: "#/components/parameters/Filter.between"
+        - $ref: "#/components/parameters/OrderBy"
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded: {}
+          application/json:
+            schema:
+              $ref: "#/components/schemas/post_input"
+      responses:
+        '204':
+          description: The post has been updated. No further response.
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
+    #put
+  #/posts/{id}/tags/{id}
+    #patch
+    #delete
+  /tags:
+    get:
+      summary: Return a list of post tags.
+      description: Use the start and step parameters to get tags.
+      operationId: GetTagsV1
+      tags:
+        - Tags
+      parameters:
+        - $ref: "#/components/parameters/ListStartParam"
+        - $ref: "#/components/parameters/ListStepParam" 
+        - $ref: "#/components/parameters/Filter.eq"
+        - $ref: "#/components/parameters/Filter.le"
+        - $ref: "#/components/parameters/Filter.ge"
+        - $ref: "#/components/parameters/Filter.like"
+        - $ref: "#/components/parameters/Filter.between"
+        - $ref: "#/components/parameters/OrderBy"       
+      responses:
+        '200':
+          description: A list of post tags. 
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/success"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/tags"
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     post:
       summary: Create a new tag.
       description: When valid fieds are passed in the request body, a new tag will be created. A 201 will contain the new tag id.
-      operationId: updatePostV1
+      operationId: PostTagV1
       tags:
         - Tags
       requestBody:
@@ -425,23 +437,53 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/post_tag_input"
+              $ref: "#/components/schemas/tag_input"
       responses:
         '201':
-          description: The new post has been created.
+          description: A new tag was created. This respone will contain a link to the new tag. 
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/post_tag"
-        '400':
-          description: The request is invalid or malformed.
+                allOf:
+                  - $ref: "#/components/schemas/success_201"
+                  - type: object
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/400_error"  
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
   /tags/{tagID}:
+    get:
+      summary: Retrieve an existing tag by its id.
+      description: A valid id returns a single tag.
+      operationId: GetTagV1
+      tags:
+        - Tags
+      responses:
+        '200':
+          description: A single tag.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/success"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/tags"
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     patch:
-      summary: Update an existing tag.
+      summary: Update an existing tag by id.
+      description: The name field can be altered.
+      operationId: PatchTagV1
       tags:
         - Tags
       requestBody:
@@ -449,24 +491,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/post_tag_input"
+              $ref: "#/components/schemas/tag_input"
       responses:
         '204':
-          description: The tag has been updated.
+          description: Updated tag. No further response.
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/post_tag"
-        '304':
-          description: Failed to update the user.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/post_tag"
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     delete:
       summary: Delete a tag by ID
-      description: Deletes the tag identified by the given ID.
-      operationId: deleteTagV1
+      description: Deletes the tag identified by the given ID. Deleted tags are also removed from posts.
+      operationId: DeleteTagV1
       tags:
         - Tags
       parameters:
@@ -478,25 +517,53 @@ paths:
             type: integer
             format: int32
       responses:
-        '204':
-          description: Tag deleted successfully.
+        '200':
+          description: Tag deleted successfully. Included in the body will be the number of posts that were using the tag.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/204_error"
-        '404':
-          description: Tag not found.
+                allOf:
+                  - $ref: "#/components/schemas/success"
+                  - type: object
+                    properties:
+                      Affected posts:
+                        type: integer
+                        default: 3
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"    
+  /tags/{tagID}/posts:
+    get:
+      summary: Retrieve all the posts that are using the specified tag.
+      description: A valid id will return a set of posts using the tag. Invalid ids will 404.
+      operationId: PostsWithTagsV1
+      tags:
+        - Tags
+      responses:
+        '200':
+          description: A collection of posts using the tag.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/404_error"
-        '500':
-          description: Internal server error.
+                allOf:
+                - $ref: "#/components/schemas/success"
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/post_with_tags"
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/500_error"
-                      
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
 components:
   parameters:
     ListStartParam:
@@ -504,14 +571,10 @@ components:
       in: query
       description: 
         "
-        Works in conjunction with the ListStepParam.<br>
-        Items returned = (start * step) + step.<br>
-        Assume the query orders by item_id ascending.<br>
-        For example: You provide a start of 0 and a step of 10. A list of 
-        the 'first' ten items will be returned. A start of 2 and a step of 3 would 
-        return a list of 3 items returned at the 6th - 8th places.<br>
-        Start and Step combinations that query up to and beyond the available entries
-        are valid. In such query a 'short' or empty list will be returned.
+        A starting index or page. Works in tandem with the step parameter.<br>
+        Example: start=2&step=10<br>
+        This would retrieve items 20 through 30.<br>
+        Calculation: (2 * 10) through ((2 * 10) + 10)
         "
       schema:
         type: integer
@@ -525,7 +588,7 @@ components:
       in: query
       description:         
         "
-        See the ListStartParam description.
+        See the *start* description.
         "
       schema:
         type: integer
@@ -549,70 +612,140 @@ components:
       required: true
       schema:
         type: string
-    Filter:
-      name: filter
+    Filter.eq:
+      name: filter.eq
       in: query
       required: false
       description: 
         "
-        Matches on any field in the objects table. For example, in the Users table a column of 'name' exists. 
-        You could, effectively, perform a query filter during the lookup of Users on the 'name' field.
+        Synonymous with an SQL \"Equal\" operator provided to a \"Where\" clause. Multiple uses is synonymous with the SQL \"In\" operator. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored.
         "
       schema:
-        type: object
-        additionalProperties:
+        type: array
+        items:
           type: string
-      examples:
-        example1:
-          summary: Sort by creation date in descending order, then by title in ascending order.
-          value: "sort=-created_at,name"
+      style: form
+      explode: true
+      example: "id=10"
+    Filter.ge:
+      name: filter.ge
+      in: query
+      required: false
+      description: 
+        "
+        Synonymous with an SQL \"Greater Than or Equal To\" operator provided to a \"Where\" clause. Multiple uses are cumulative, passing all operations to db. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored.
+        "
+      schema:
+        type: array
+        items:
+          type: string
+      example: "id=10"
+    Filter.le:
+      name: filter.le
+      in: query
+      required: false
+      description: 
+        "
+        Synonymous with an SQL \"Less Than or Equal To\" operator provided to a \"Where\" clause. Multiple uses are cumulative, passing all operations to db. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored.
+        "
+      schema:
+        type: array
+        items:
+          type: string
+      example: "id=10"
+    Filter.like:
+      name: filter.like
+      in: query
+      required: false
+      description: 
+        "
+        Synonymous with an SQL \"Like\" operator provided to a \"Where\" clause. Multiple uses are cumulative, passing all operations to db. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored. Include \"%\" \
+        as a wildcard.
+        "
+      schema:
+        type: array
+        items:
+          type: string
+      example: "tag_name=%ello Worl%"
+    Filter.between:
+      name: filter.between
+      in: query
+      required: false
+      description: 
+        "
+        Synonymous with an SQL \"Between\" operator provided to a \"Where\" clause. Multiple uses is synonymous with the SQL \"In\" operator. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored.
+        "
+      schema:
+        type: array
+        items:
+          type: string
+      examples: 
+        digits: 
+          value: "id=10,20"
+          summary: "id=10,20"
+        dates:
+          value: "created=01-01-2023,02-02-2023"
+          summary: "created=01-01-2023,02-02-2023"
     OrderBy:
       name: orderBy
       in: query
       required: false
-      description: Sort the results by one or more fields, separated by commas. Use a "-" prefix to sort in descending order.
+      description: 
+        "
+        Synonymous with an SQL \"Order by\" keyword. Multiple columns can be sorted. Prepending a \"-\" is synonymous with the \"DESC\" keyword. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored.
+        "
       schema:
-        type: string
+        type: array
+        items:
+          type: string
+      style: form
+      explode: true
+      example: "-id"
   schemas:
-    server_error:
-      description: An error occured. Some data may be provided below.
+    success:
+      description: A 200 series responses
       type: object
       properties:
-        error:
-          type: object
-          properties:
-            code:
-              type: integer
-              default: 0
-            message:
-              type: string
-              default: "Could not provide the error message."
-    204_error:
-      description: The provided query parameter(s) yielded zero results.
+        status:
+          type: string
+          default: "Success"
+    success_201:
+      description: A 201
       type: object
       properties:
-        error:
-          type: object
-          properties:
-            code:
-              type: integer
-              default: 204
-            message:
-              type: string
-              default: "The URI format was valid but the provided query parameters yielded zero results."
-    404_error:
-      description: The specified URI does not exist.
+        status:
+          type: string
+          default: "Success"
+        message:
+          type: string
+          default: "Resource created successfully."
+        location:
+          type: string
+          format: URI
+          default: "https://dennismarwood.com/{object}/{new_id}"
+          description: "A URI to the newly created resource"
+    error:
+      description: Any non 200 series response.
       type: object
       properties:
-        error:
-          type: object
-          properties:
-            code:
-              type: integer
-              default: 404
-            message:
-              type: string
-              default: "The specified URI does not exist because the item id was not found."
+        status:
+          type: string
+          default: "Error"
+        code:
+          type: string
+          default: "SOME_ERROR"
+        message:
+          type: string
+          default: "Data"
+        errors:
+          type: array
+          default: "If applicable, element specific troubleshooting messages will appear here."
     400_error:
       description: The server cannot (or will not) perform the client's reqeuested action.
       type: object
@@ -622,7 +755,7 @@ components:
           properties:
             code:
               type: integer
-              default: 404
+              default: 400
             message:
               type: string
               default: "Your request body did not contain valid values. Alter your input and try again."
@@ -639,16 +772,7 @@ components:
             message:
               type: string
               default: "The server had an internal error and could not process your request. Please try again later."
-    payload:
-      description: A list of query results.
-      type: object
-      example: "payloads"
-      properties:
-        payloads:
-          type: array
-    blog_tag_payload:
-      description: A list of 
-    post_tag:
+    tag:
       description: A short description of a topic.
       type: object
       example: {"id": 0, "name": "Rust"}
@@ -665,7 +789,11 @@ components:
           example: 4
           minimum: 0
           maximum: 255
-    post_tag_input:
+    tags:
+      type: array
+      items:
+        $ref: '#/components/schemas/tag'
+    tag_input:
       description: Create a new tag to be attached to posts.
       type: object
       example: {"name": "Rust"}
@@ -673,9 +801,58 @@ components:
         name:
           description: A Case-insensitive word or short phrase that describes a topic covered in your post.
           type: string
-          maxLength: 50
+          maxLength: 100
       required:
         - name
+    post:
+      type: object
+      description: Post object
+      properties:
+        id:
+          type: integer
+          format: i32
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+        author:
+          type: string
+          minLength: 1
+          maxLength: 100
+        created:
+          type: string
+          format: date-time
+        last_updated:
+          type: string
+          format: date
+        content:
+          type: string
+      required:
+        - id
+        - title
+        - author
+    posts:
+      type: array
+      items:
+        $ref: '#/components/schemas/post'
+    post_with_tags:
+      type: object
+      properties:
+        post:
+          $ref: "#/components/schemas/post"
+        tags:
+          $ref: "#/components/schemas/tags"
+    post_input:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 50
+        content:
+          type: string
+      required:
+        - title
+        - author
     user:
       type: object
       description: User object
@@ -715,51 +892,13 @@ components:
       required:
         - id
         - role
-    post:
-      type: object
-      description: Post object
-      properties:
-        id:
-          type: integer
-          format: i32
-        title:
-          type: string
-          minLength: 1
-          maxLength: 100
-        author:
-          type: string
-          minLength: 1
-          maxLength: 100
-        created:
-          type: string
-          format: date-time
-        last_updated:
-          type: string
-          format: date
-        content:
-          type: string
-        tags:
-          type: array
-          items:
-            $ref: "#/components/schemas/post_tag"
-      required:
-        - id
-        - title
-        - author
-    user_list:
+    users:
       type: array
       minItems: 1
       maxItems: 100
       description: List of Users
       items:
         $ref: "#/components/schemas/user"
-    post_list:
-      type: array
-      minItems: 1
-      maxItems: 100
-      description: List of Posts and their tags
-      items:
-        $ref: "#/components/schemas/post"
     user_input:
       type: object
       properties:
@@ -777,14 +916,3 @@ components:
       required:
         - email
         - role
-    post_input:
-      type: object
-      properties:
-        title:
-          type: string
-          maxLength: 50
-        content:
-          type: string
-      required:
-        - title
-        - author
