@@ -3,7 +3,7 @@ openapi: '3.0.1'
 # https://github.com/42Crunch/vscode-openapi/issues/129
 info:
   title: DennisMarwood.com
-  description: CRUD blog entries for homepage.
+  description: CRUD post entries for homepage blog.
   contact:
       name: Dennis Marwood,
       url: https://dennismarwood.com/contact,
@@ -12,11 +12,11 @@ info:
   #license:
     #name: 
     #url:
-servers: #Check on passing in a variable here
+servers:
   - url: http://localhost:8001/api
-    description: Dev Back
+    description: Dev Back V1
   - url: http://127.0.0.1:8001/api
-    description: Dev Back
+    description: Dev Back V1
 paths:
   /users:
     get:
@@ -355,7 +355,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/error"
   /posts/{id}/tags:
-    patch: #params
+    patch:
       summary: Add tags to a post.
       description: Use either query params or pass along a form to add tags to a post. Note the **Request Body** drop down below.
       operationId: PatchPostTagsV1
@@ -376,7 +376,7 @@ paths:
           application/x-www-form-urlencoded: {}
           application/json:
             schema:
-              $ref: "#/components/schemas/post_input"
+              $ref: "#/components/schemas/bulk_tags"
       responses:
         '204':
           description: The post has been updated. No further response.
@@ -387,10 +387,91 @@ paths:
               schema: 
                 allOf:
                   - $ref: "#/components/schemas/error"
-    #put
-  #/posts/{id}/tags/{id}
-    #patch
-    #delete
+    put:
+      summary: Replace all tags on a post.
+      description: The body should contain some combination of "names" and "ids" for tags. All existing tags are replaced. An empty set will render the post tagless.
+      operationId: PutPostTagsV1
+      tags:
+        - Posts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/bulk_tags"
+      responses:
+        '204':
+          description: The post has been updated. No further response.
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
+  /posts/{id}/tags/{id}:
+    put:
+      summary: Add a tag to a post.
+      description: Invalid tag id will return 404, invalid tag id will return 204.
+      operationId: PutPostTagV1
+      tags:
+        - Posts
+      parameters:
+        - name: postId
+          in: path
+          description: The ID of the post in reference.
+          required: true
+          schema:
+            type: integer
+            format: int32
+        - name: tagId
+          in: path
+          description: The ID of the tag to append to the post.
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '204':
+          description: The post has been updated. No further response.
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
+    delete:
+      summary: Delete a tag from a post.
+      description: Deletes the tag identified by the given ID.
+      operationId: DeletePostTagV1
+      tags:
+        - Posts
+      parameters:
+        - name: postId
+          in: path
+          description: The ID in reference.
+          required: true
+          schema:
+            type: integer
+            format: int32
+        - name: tagId
+          in: path
+          description: The ID of the tag to removed from the post.
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '204':
+          description: The post has been deleted. No further response.
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
   /tags:
     get:
       summary: Return a list of post tags.
@@ -772,6 +853,23 @@ components:
             message:
               type: string
               default: "The server had an internal error and could not process your request. Please try again later."
+    bulk_tags:
+      description: A collection of optional tag ids and optional tag names.
+      type: object
+      example: {"id": [0, 1, 2], "name": ["Rust", "Programming", "Learning"]}
+      properties:
+        id:
+          description: An array of tag ids. 
+          type: array
+          items:
+            type: integer
+          example: [3, 4, 5]
+        name:
+          description: An array of tag names
+          type: array
+          items:
+            type: string
+          example: ["Rust", "Learning"]
     tag:
       description: A short description of a topic.
       type: object
