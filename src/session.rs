@@ -5,7 +5,7 @@ use rocket::serde::json::{Value, json};//Json
 //use crate::pw::verify_password;
 //use crate::jwt::get_jwt;
 use rocket::{Request};
-use rocket::http::{Cookie, CookieJar, Status};
+//use rocket::http::{Cookie, CookieJar, Status};
 //use crate::models::EnvVariables;
 //use rocket::State;
 
@@ -117,12 +117,12 @@ pub mod routes {
             }
     } */
 
-    #[delete("/", format = "json")]
+    /* #[delete("/", format = "json")]
     pub async fn destroy_session(jar: &CookieJar<'_>) -> Status {
         //Reminder that removing the cookie from the client is a session destruction half measure. A duplicate of the deleted jwt would still 
         //be validated by the guard.
         jar.remove(Cookie::named("jwt"));
         //Redirect::to(uri!(home));//Front end should redirect?
         Status::Ok 
-    }
+    } */
 }
