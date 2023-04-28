@@ -1,20 +1,22 @@
 use rocket::serde::json::{Json, Value, json};
 use diesel::prelude::*;
 use crate::config::DbConn;
-use crate::models::{NewUser, User};
-use crate::schema::{user};
+use crate::models::{NewUser, User, AResponse};
+use crate::schema::{user, role};
 use crate::pw::get_phc;
-use rocket::http::{Status};
+use rocket::http::{Cookie, CookieJar, Status};
 use rocket::response::status;
 use rocket::Request;
 use rocket::form::Form;
 use crate::myjsonapi::{JSONAPIError,};
+use rocket::State;
+use crate::models::EnvVariables;
 //use rocket::response::Redirect;
 //use crate::index::home;
 //#[macro_use] extern crate serde_derive;
 
 pub mod routes {
-    use crate::auth::{Level1, ValidSession};
+    use crate::{auth::{Level1, ValidSession}, jwt::get_jwt};
     use super::*;
 
     #[catch(422)]
@@ -45,6 +47,12 @@ pub mod routes {
         json!({"errors": vec![message]})
     }
 
+    #[derive(serde::Deserialize, Clone)]
+    pub struct login {
+        email: String,
+        password: String,
+    }
+
     #[derive(serde::Deserialize)]
     pub struct CreateNewUser {
         pub email: String,
@@ -65,6 +73,7 @@ pub mod routes {
         pub role: Option<i32>,
         pub active: Option<bool>,
     }
+
     #[patch("/", format="form", data="<updated_user>")]
     pub async fn _patch_user_form(updated_user: Form<UpdateUser>) -> Value {
         /* 
@@ -198,10 +207,51 @@ pub mod routes {
         }
     }
 
+    #[post("/session", format = "json", data="<login>")]
+    pub async fn start_session(conn: DbConn, login: Json<login>, jar: &CookieJar<'_>, server_env_vars: &State<EnvVariables>) -> Result<Status, status::Custom<Json<AResponse>>> {
+        let email_clone = login.email.clone();
+        let (user, role) = match //Retrieve a user object and the user objects corresponding user_role
+            conn.run( move |conn| {
+                user::table
+                .left_join(role::table)
+                .select((User::as_select(), role::user_role.nullable()))
+                .filter(user::email.eq(email_clone))
+                .first::<(User, Option<String>)>(conn)
+            }).await
+        {
+            Ok((user, role)) =>       
+                match crate::pw::verify_password(&login.password, &user.phc.clone().unwrap_or_default()) {
+                    Ok(_) => (user, role), //provided email and pw are good
+                    Err(_) => return Err(status::Custom(Status::Unauthorized, Json(AResponse::_401(Some(String::from("Provided email or password was invalid.")))))), //Provided pw was invalid
+                },
+            Err(_) => 
+                return Err(status::Custom(Status::Unauthorized, Json(AResponse::_401(Some(String::from("Provided email or password was invalid.")))))), //Provided email was invalid
+        };
+
+        match get_jwt(&user, role.unwrap().as_str(), server_env_vars.jwt_secret.as_ref()) {
+            Ok(jwt) => 
+            {
+                let mut cookie = Cookie::new("jwt", jwt.clone());
+                cookie.set_http_only(true);
+                jar.add(cookie); //jwt added to client cookies
+
+                match conn.run( move |conn| { //Update the last access column for the user
+                    diesel::update(&user).set(user::last_access.eq(chrono::Utc::now().date_naive())).execute(conn)
+                    }).await
+                {
+                    Ok(_) => return Ok(Status::Ok), // return 200
+                    Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem updating the last access column.
+                };
+            },
+            Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem creating the jwt.
+        }
+
+    }
+
+    #[delete("/session")]
+    pub async fn end_session(jar: &CookieJar<'_>) -> Status {
+        jar.remove(Cookie::named("jwt"));
+        Status::Ok 
+    }
+
 }
-
-/* pub mod helper {
-    use super::*;
-
- 
-} */

@@ -9,7 +9,7 @@ use pbkdf2::{
     // store new phc in db
     // retrieve phc for user and verify
 
-    pub fn verify_password(password: String, phc: String) -> Result<(), pbkdf2::password_hash::Error>{
+    pub fn verify_password(password: &String, phc: &String) -> Result<(), pbkdf2::password_hash::Error>{
         let password = password.as_bytes();//User provided pw
         let parsed_hash = PasswordHash::new(&phc);//User's computed phc
         match parsed_hash {//Confirm that phc is valid format

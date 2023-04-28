@@ -151,6 +151,16 @@ impl AResponse {
             errors: None,
         }
     }
+    pub fn _401(message: Option<String>) -> Self {
+        AResponse {
+            status: String::from("Error"),
+            data: None,
+            message: message,
+            location: None,
+            code: Some(String::from("UNAUTHORIZED")),
+            errors: None,
+        }
+    }
     pub fn _404(message: Option<String>) -> Self {
         AResponse {
             status: String::from("Error"),
@@ -239,7 +249,7 @@ pub struct NewBlogTag {
     pub tag_id: i32
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Identifiable, Queryable, Associations, PartialEq, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Identifiable, Queryable, Associations, PartialEq, Debug, Selectable)]
 #[diesel(table_name = user)]
 #[diesel(belongs_to(Role, foreign_key = role))]
 pub struct User {

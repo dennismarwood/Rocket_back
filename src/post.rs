@@ -432,8 +432,8 @@ pub mod routes {
         }
     }
 
-    #[patch("/<post_id>/tags/<tag_id>")]
-    pub async fn patch_post_tag(post_id: i32, tag_id: i32, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+    #[put("/<post_id>/tags/<tag_id>")]
+    pub async fn put_post_tag(post_id: i32, tag_id: i32, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
         let target_post = retrieve_one_post(post_id, &conn).await?;
 
@@ -448,7 +448,6 @@ pub mod routes {
 
         crate::blog_tags::add_entries(&conn, target_post, tags).await?;
         Ok(status::NoContent)
-
     }
 
     #[patch("/<id>/tags?<tag_params..>", rank = 2)]
@@ -517,7 +516,7 @@ pub mod routes {
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
         // Now is the time to confirm that every id and name in "tags" is found in the result of the parse_and_query.
-        // If not then we need to return an error saying what names or ids are badl
+        // If not then we need to return an error saying what names or ids are bad.
 
         // TODO: Have that issue here where a user could have passed in non-existent or invalid tags for this post.
         // I guess the invalid tags would only be duplicates, and we can just ignore that.

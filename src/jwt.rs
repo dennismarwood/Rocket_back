@@ -1,6 +1,7 @@
 use jsonwebtoken::*;
 use chrono::{Utc, Duration};
 use crate::models::JWTClaims;
+use crate::models::User;
 
 /*
 CSRF - Originally, the default behavior of a browser was to include all cookies it had to every website you went to.
@@ -37,7 +38,28 @@ struct Claims {
     exp: usize
 }
 
+pub fn get_jwt(user: &User, user_role: &str, secret: &[u8]) -> Result<String, jsonwebtoken::errors::Error> {
+    let ttl = Duration::hours(2);
+    let expiration = Utc::now()
+        .checked_add_signed(ttl)
+        .expect("failed to make jwt expiration.")
+        .timestamp(); //Returns the number of non-leap seconds since January 1, 1970 0:00:00 UTC (aka “UNIX timestamp”).
 
+    let claims = Claims {
+        user_id: user.id,
+        email: user.email.clone().unwrap(),
+        role_id: user.role,
+        role: String::from(user_role),
+        exp: expiration as usize,
+    };
+
+    jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret),
+    )
+}
+/* 
 pub fn get_jwt(user_id: i32, user_email: String, role_id: i32, user_role: String, secret: &[u8] ) -> Result<String, jsonwebtoken::errors::Error> {
     //let figment = rocket::figment::Figment::from(rocket::Config::default());
     //let secret = figment.extract_inner("jwt_secret").expect("ROCKET_JWT_SECRET env value was not found.");
@@ -63,7 +85,7 @@ pub fn get_jwt(user_id: i32, user_email: String, role_id: i32, user_role: String
     )//.map(|s| s.clone())
     //.map_err(|e| e.to_string())
 }
-
+ */
 pub fn validate_jwt(jwt: &str, secret: &[u8]) -> Result< JWTClaims, jsonwebtoken::errors::Error> {
     //let figment = rocket::figment::Figment::from(rocket::Config::default());
     //let secret = figment.extract_inner("jwt_secret").expect("ROCKET_JWT_SECRET env value was not found.");

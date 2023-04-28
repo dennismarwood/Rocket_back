@@ -85,7 +85,7 @@ fn rocket() -> _ {
             post::routes::post,
             post::routes::patch,
             post::routes::delete,
-            patch_post_tag,
+            put_post_tag,
             patch_post_tags,
             patch_post_tags_form,
             put_post_tags_form,
@@ -98,10 +98,10 @@ fn rocket() -> _ {
             update_role,
             delete_role
         ])
-        .mount("/session", routes![
+        /* .mount("/session", routes![
             create_session, 
             destroy_session
-        ])
+        ]) */
             .register("/session", catchers![
                 email_or_pw_incorrect
             ])
@@ -110,6 +110,8 @@ fn rocket() -> _ {
             delete_user, 
             update_user,
             get_user,
+            start_session,
+            end_session,
             //patch_user
         ])
             .register("/user", catchers![
