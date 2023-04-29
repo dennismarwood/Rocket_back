@@ -214,6 +214,8 @@ paths:
       operationId: updatePostV1
       tags:
         - Posts
+      security:
+        - CookieJWT: []
       requestBody:
         required: true
         content:
@@ -268,6 +270,8 @@ paths:
       operationId: PatchPostV1
       tags:
         - Posts
+      security:
+        - CookieJWT: []
       requestBody:
         required: true
         content:
@@ -290,6 +294,8 @@ paths:
       operationId: DeletePostV1
       tags:
         - Posts
+      security:
+        - CookieJWT: []
       parameters:
         - name: postId
           in: path
@@ -315,6 +321,8 @@ paths:
       operationId: PatchPostTagsV1
       tags:
         - Posts
+      security:
+        - CookieJWT: []
       parameters:
         - $ref: "#/components/parameters/ListStartParam"
         - $ref: "#/components/parameters/ListStepParam" 
@@ -347,6 +355,8 @@ paths:
       operationId: PutPostTagsV1
       tags:
         - Posts
+      security:
+        - CookieJWT: []
       requestBody:
         required: true
         content:
@@ -370,6 +380,8 @@ paths:
       operationId: PutPostTagV1
       tags:
         - Posts
+      security:
+        - CookieJWT: []
       parameters:
         - name: postId
           in: path
@@ -401,6 +413,8 @@ paths:
       operationId: DeletePostTagV1
       tags:
         - Posts
+      security:
+        - CookieJWT: []
       parameters:
         - name: postId
           in: path
@@ -468,6 +482,8 @@ paths:
       operationId: PostTagV1
       tags:
         - Tags
+      security:
+        - CookieJWT: []
       requestBody:
         required: true
         content:
@@ -522,6 +538,8 @@ paths:
       operationId: PatchTagV1
       tags:
         - Tags
+      security:
+        - CookieJWT: []
       requestBody:
         required: true
         content:
@@ -544,6 +562,8 @@ paths:
       operationId: DeleteTagV1
       tags:
         - Tags
+      security:
+        - CookieJWT: []
       parameters:
         - name: tagId
           in: path
@@ -782,8 +802,6 @@ components:
         errors:
           type: array
           default: "If applicable, element specific troubleshooting messages will appear here."
-
-
     bulk_tags:
       description: A collection of optional tag ids and optional tag names.
       type: object
