@@ -105,7 +105,7 @@ fn rocket() -> _ {
             .register("/session", catchers![
                 email_or_pw_incorrect
             ])
-        .mount("/user", routes![
+        .mount("/users", routes![
             add_user, 
             delete_user, 
             update_user,

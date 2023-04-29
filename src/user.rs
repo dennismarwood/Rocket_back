@@ -7,7 +7,7 @@ use crate::pw::get_phc;
 use rocket::http::{Cookie, CookieJar, Status};
 use rocket::response::status;
 use rocket::Request;
-use rocket::form::Form;
+//use rocket::form::Form;
 use crate::myjsonapi::{JSONAPIError,};
 use rocket::State;
 use crate::models::EnvVariables;
@@ -23,7 +23,6 @@ pub mod routes {
     pub fn dup_entry() -> Value {
         json!(format!("Ensure email is unique and role is valid."))
     }
-
 
     #[catch(default)]
     pub fn catch_all(status: Status, _req: &Request) -> Value {
@@ -48,7 +47,7 @@ pub mod routes {
     }
 
     #[derive(serde::Deserialize, Clone)]
-    pub struct login {
+    pub struct Login {
         email: String,
         password: String,
     }
@@ -74,7 +73,7 @@ pub mod routes {
         pub active: Option<bool>,
     }
 
-    #[patch("/", format="form", data="<updated_user>")]
+    /* #[patch("/", format="form", data="<updated_user>")]
     pub async fn _patch_user_form(updated_user: Form<UpdateUser>) -> Value {
         /* 
         Data could be sent into the backend with key value tuples described here:https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST
@@ -84,23 +83,16 @@ pub mod routes {
         */
         //println!("patch_user not implimented for the content-type:application/x-www-form-urlencoded. {:?}", updated_user);
         todo!("\n\npatch_user not implimented for the content-type:application/x-www-form-urlencoded. {:?}", updated_user)
-    }
-
-    /* #[patch("/", format="json", data="<updated_user>")]
-    pub async fn patch_user(updated_user: Json<UpdateUser>) -> Value {
-        todo!()
     } */
 
     #[patch("/<id>", format = "json", data="<updated_user>")]
-    pub async fn update_user(id: i32, conn: DbConn, mut updated_user: Json<UpdateUser>, _x: Level1) -> Result<Status, status::Custom<Value>> {
-        println!("HERE IS THE PATCH");
-        //TODO: Updating a pw should invalidate this user's jwt. We should update user fields, invalidate jwt (not implemented), then give them a new jwt.
+    pub async fn update_user(id: i32, conn: DbConn, mut updated_user: Json<UpdateUser>, _x: Level1) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
         //If a new pw was sent, calculate phc first.
         if updated_user.phc.is_some() {
             let pass = updated_user.phc.clone().unwrap();
             match get_phc(pass) {
                 Ok(user_phc) => updated_user.phc = Some(user_phc),
-                Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("Failed to updated the user's PW. {}", e)))),
+                Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem updating the user's pw.
             }
         };
 
@@ -110,13 +102,13 @@ pub mod routes {
             .set(updated_user.into_inner())
             .execute(c)
         }).await {
-        Ok(_) => return Ok(Status::NoContent),
-        Err(e) => return Err(status::Custom(Status::InternalServerError, json!(format!("Failed to update the user. {}", e)))),
+        Ok(_) => return Ok(status::NoContent),
+        Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem updating the user.
       }  
     } 
     
-    #[get("/")]
-    pub async fn get_user(conn:DbConn, user_id: ValidSession) -> (Status, Value) {
+    #[get("/")]//
+    pub async fn get_user(conn:DbConn, user_id: ValidSession) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
         match conn.run(move |c: &mut MysqlConnection| {
             user::table
                 .filter(user::id.eq(user_id.id))
@@ -131,25 +123,14 @@ pub mod routes {
                 map.remove("phc");
                 let entry = json!(map);
                 
-                return (Status::Ok, entry)
+                return Ok(Json(AResponse::_200(Some(json!(entry)))))
             },
-            Err(e) => {
-                return (Status::InternalServerError, 
-                    json!({
-                        "errors": [
-                            {
-                                "status": 500,
-                                "description": format!("{}", e)
-                            }
-                        ]
-                    })
-                )
-            },
+            Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem retrieving the user.
         };
     }
 
-    #[post("/", format = "json", data="<new_user>")]
-    pub async fn add_user(conn: DbConn, new_user: Json<CreateNewUser>, _x: Level1) -> Result<Status, Status> {
+    #[post("/", format = "json", data="<new_user>")]//
+    pub async fn add_user(conn: DbConn, new_user: Json<CreateNewUser>, _x: Level1) -> Result<status::Created<String>, status::Custom<Json<AResponse>>> {
         //TODO check that pass meets minimum criteria (length, uppper, number, etc)
         //TODO verify that email is valid format
 
@@ -159,13 +140,16 @@ pub mod routes {
             phc: None,
             first_name: new_user.first_name.clone(),
             last_name: new_user.last_name.clone(),
-            role: -1,
+            //---------------------------------------------------------------------------------------------------
+            //Careful here, allowing front end user to dicatate role level! Ok for now as only an admin user can add users.
+            //--------------------------------------------------------------------------------------------------- 
+            role: new_user.role,
             active: true,
         };
 
         match get_phc(new_user.pass.clone()) {
             Ok(user_phc) => user.phc = Some(user_phc),
-            Err(_) => return Err(Status::InternalServerError)
+            Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem creating the phc.
         }
 
         /* 
@@ -179,13 +163,16 @@ pub mod routes {
                     .values(user)
                     .execute(c)
                 }).await {
-            Ok(_) => Ok(Status::Created),
-            Err(_) => Err(Status::UnprocessableEntity),
+            Ok(_) => Ok(status::Created::new(String::new())),
+            Err(e) => Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
+                Some(e.to_string()), 
+                Some(String::from("INVALID_FIELD")),
+                None)))),
             }
 
     }
 
-    #[delete("/<id>", format = "json")]
+    #[delete("/<id>")]
     pub async fn delete_user(id: i32, conn: DbConn, _x: Level1) -> Result<Status, status::Custom<Value>> {
         match conn.run(move |c| {
             diesel::delete(user::table
@@ -208,7 +195,7 @@ pub mod routes {
     }
 
     #[post("/session", format = "json", data="<login>")]
-    pub async fn start_session(conn: DbConn, login: Json<login>, jar: &CookieJar<'_>, server_env_vars: &State<EnvVariables>) -> Result<Status, status::Custom<Json<AResponse>>> {
+    pub async fn start_session(conn: DbConn, login: Json<Login>, jar: &CookieJar<'_>, server_env_vars: &State<EnvVariables>) -> Result<Status, status::Custom<Json<AResponse>>> {
         let email_clone = login.email.clone();
         let (user, role) = match //Retrieve a user object and the user objects corresponding user_role
             conn.run( move |conn| {
