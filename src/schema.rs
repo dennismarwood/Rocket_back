@@ -36,7 +36,7 @@ diesel::table! {
 diesel::table! {
     user (id) {
         id -> Integer,
-        email -> Nullable<Varchar>,
+        email -> Varchar,
         phc -> Nullable<Char>,
         first_name -> Nullable<Varchar>,
         last_name -> Nullable<Varchar>,

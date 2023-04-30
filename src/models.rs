@@ -254,7 +254,7 @@ pub struct NewBlogTag {
 #[diesel(belongs_to(Role, foreign_key = role))]
 pub struct User {
     pub id: i32,
-    pub email: Option<String>,
+    pub email: String,
     pub phc: Option<String>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,

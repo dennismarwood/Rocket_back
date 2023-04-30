@@ -47,7 +47,7 @@ pub fn get_jwt(user: &User, user_role: &str, secret: &[u8]) -> Result<String, js
 
     let claims = Claims {
         user_id: user.id,
-        email: user.email.clone().unwrap(),
+        email: user.email.clone(),
         role_id: user.role,
         role: String::from(user_role),
         exp: expiration as usize,
