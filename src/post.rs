@@ -1,6 +1,6 @@
 use crate::config::DbConn;
+use crate::schema::{post, tag};
 use crate::models::{BlogEntry, AResponse, QParams, Filters, BlogTags, Tag};
-use crate::schema::{blog, tag};
 use diesel::prelude::*;
 use diesel::mysql::Mysql;
 use diesel::result::DatabaseErrorKind::{UniqueViolation, NotNullViolation };
@@ -31,7 +31,7 @@ pub mod routes {
     }
 
     #[derive(Debug, serde::Deserialize, Insertable)]
-    #[diesel(table_name = blog)]
+    #[diesel(table_name = post)]
     pub struct NewPost {
         pub title: String,
         pub author: String,
@@ -41,7 +41,7 @@ pub mod routes {
     }
 
     #[derive(Debug, serde::Deserialize, Insertable, Identifiable, AsChangeset)]
-    #[diesel(table_name = blog)]
+    #[diesel(table_name = post)]
     struct UpdatePost {
         pub id: i32,
         pub title: String,
@@ -100,17 +100,17 @@ pub mod routes {
         //https://docs.diesel.rs/2.0.x/diesel/prelude/trait.QueryDsl.html#method.filter
         conn.run(move |c| {
 
-            let mut query = blog::table.into_boxed::<Mysql>();
+            let mut query = post::table.into_boxed::<Mysql>();
 
             for f in params.filter.eq {
                 if let Some(query_parameter) = validation(f){
                     match query_parameter {
-                        PostFields::Id(id) => query = query.or_filter(blog::id.eq(id)),
-                        PostFields::Title(title) => query = query.or_filter(blog::title.eq(title)),
-                        PostFields::Author(author) => query = query.or_filter(blog::author.eq(author)),
-                        PostFields::Created(created) => query = query.or_filter(blog::created.eq(created)),
-                        PostFields::LastUpdated(lu) => query = query.or_filter(blog::last_updated.eq(lu)),
-                        PostFields::Content(content) => query = query.or_filter(blog::content.eq(content)),
+                        PostFields::Id(id) => query = query.or_filter(post::id.eq(id)),
+                        PostFields::Title(title) => query = query.or_filter(post::title.eq(title)),
+                        PostFields::Author(author) => query = query.or_filter(post::author.eq(author)),
+                        PostFields::Created(created) => query = query.or_filter(post::created.eq(created)),
+                        PostFields::LastUpdated(lu) => query = query.or_filter(post::last_updated.eq(lu)),
+                        PostFields::Content(content) => query = query.or_filter(post::content.eq(content)),
                     }
                 }
             }
@@ -118,12 +118,12 @@ pub mod routes {
             for f in params.filter.ge {
                 if let Some(query_parameter) = validation(f){
                     match query_parameter {
-                        PostFields::Id(id) => query = query.or_filter(blog::id.ge(id)),
-                        PostFields::Title(title) => query = query.or_filter(blog::title.ge(title)),
-                        PostFields::Author(author) => query = query.or_filter(blog::author.ge(author)),
-                        PostFields::Created(created) => query = query.or_filter(blog::created.ge(created)),
-                        PostFields::LastUpdated(lu) => query = query.or_filter(blog::last_updated.ge(lu)),
-                        PostFields::Content(content) => query = query.or_filter(blog::content.ge(content)),
+                        PostFields::Id(id) => query = query.or_filter(post::id.ge(id)),
+                        PostFields::Title(title) => query = query.or_filter(post::title.ge(title)),
+                        PostFields::Author(author) => query = query.or_filter(post::author.ge(author)),
+                        PostFields::Created(created) => query = query.or_filter(post::created.ge(created)),
+                        PostFields::LastUpdated(lu) => query = query.or_filter(post::last_updated.ge(lu)),
+                        PostFields::Content(content) => query = query.or_filter(post::content.ge(content)),
                     }
                 }
             }
@@ -131,12 +131,12 @@ pub mod routes {
             for f in params.filter.le {
                 if let Some(query_parameter) = validation(f){
                     match query_parameter {
-                        PostFields::Id(id) => query = query.or_filter(blog::id.le(id)),
-                        PostFields::Title(title) => query = query.or_filter(blog::title.le(title)),
-                        PostFields::Author(author) => query = query.or_filter(blog::author.le(author)),
-                        PostFields::Created(created) => query = query.or_filter(blog::created.le(created)),
-                        PostFields::LastUpdated(lu) => query = query.or_filter(blog::last_updated.le(lu)),
-                        PostFields::Content(content) => query = query.or_filter(blog::content.le(content)),
+                        PostFields::Id(id) => query = query.or_filter(post::id.le(id)),
+                        PostFields::Title(title) => query = query.or_filter(post::title.le(title)),
+                        PostFields::Author(author) => query = query.or_filter(post::author.le(author)),
+                        PostFields::Created(created) => query = query.or_filter(post::created.le(created)),
+                        PostFields::LastUpdated(lu) => query = query.or_filter(post::last_updated.le(lu)),
+                        PostFields::Content(content) => query = query.or_filter(post::content.le(content)),
                     }
                 }
             }
@@ -144,9 +144,9 @@ pub mod routes {
             for f in params.filter.like {
                 if let Some(query_parameter) = validation(f){
                     match query_parameter {
-                        PostFields::Title(title) => query = query.or_filter(blog::title.like(title)),
-                        PostFields::Author(author) => query = query.or_filter(blog::author.like(author)),
-                        PostFields::Content(content) => query = query.or_filter(blog::content.like(content)),
+                        PostFields::Title(title) => query = query.or_filter(post::title.like(title)),
+                        PostFields::Author(author) => query = query.or_filter(post::author.like(author)),
+                        PostFields::Content(content) => query = query.or_filter(post::content.like(content)),
                         _ => {},
                     }
                 }
@@ -157,22 +157,22 @@ pub mod routes {
                     if let Some((l, r)) = v.split_once(',') {
                         match k.to_lowercase().as_str() {
                             "id" => if let (Ok(l), Ok(r)) = (l.parse::<i32>(), r.parse::<i32>()) {
-                                        query = query.or_filter(blog::id.between(l, r));
+                                        query = query.or_filter(post::id.between(l, r));
                                     }
-                            "title" => query = query.or_filter(blog::title.between(l, r)),
+                            "title" => query = query.or_filter(post::title.between(l, r)),
                             "created" => if let (Ok(l), Ok(r)) = (
                                             chrono::NaiveDate::parse_from_str(l, "%Y-%m-%d"), 
                                             chrono::NaiveDate::parse_from_str(r, "%Y-%m-%d"),
                                         )
                                         {
-                                            query = query.or_filter(blog::created.between(l.and_hms(0, 0, 0), r.and_hms(0, 0, 0)));
+                                            query = query.or_filter(post::created.between(l.and_hms(0, 0, 0), r.and_hms(0, 0, 0)));
                                         }
                             "lastupdated" => if let (Ok(l), Ok(r)) = (
                                             chrono::NaiveDate::parse_from_str(l, "%Y-%m-%d"), 
                                             chrono::NaiveDate::parse_from_str(r, "%Y-%m-%d"),
                                         )
                                         {
-                                            query = query.or_filter(blog::last_updated.between(l,r));
+                                            query = query.or_filter(post::last_updated.between(l,r));
                                         } 
                             _ => (),
                         }
@@ -182,16 +182,16 @@ pub mod routes {
 
             for o in params.order {
                 match o.to_lowercase().as_str() {
-                    "id" => query = query.then_order_by(blog::id.asc()),
-                    "-id" => query = query.then_order_by(blog::id.desc()),
-                    "title" => query = query.then_order_by(blog::title.asc()),
-                    "-title" => query = query.then_order_by(blog::title.desc()),
-                    "author" => query = query.then_order_by(blog::author.asc()),
-                    "-author" => query = query.then_order_by(blog::author.desc()),
-                    "created" => query = query.then_order_by(blog::created.asc()),
-                    "-created" => query = query.then_order_by(blog::created.desc()),
-                    "lastupdated" => query = query.then_order_by(blog::last_updated.asc()),
-                    "-lastupdated" => query = query.then_order_by(blog::last_updated.desc()),
+                    "id" => query = query.then_order_by(post::id.asc()),
+                    "-id" => query = query.then_order_by(post::id.desc()),
+                    "title" => query = query.then_order_by(post::title.asc()),
+                    "-title" => query = query.then_order_by(post::title.desc()),
+                    "author" => query = query.then_order_by(post::author.asc()),
+                    "-author" => query = query.then_order_by(post::author.desc()),
+                    "created" => query = query.then_order_by(post::created.asc()),
+                    "-created" => query = query.then_order_by(post::created.desc()),
+                    "lastupdated" => query = query.then_order_by(post::last_updated.asc()),
+                    "-lastupdated" => query = query.then_order_by(post::last_updated.desc()),
                     _ => {},
                 }
             }
@@ -250,10 +250,10 @@ pub mod routes {
         //mysql does not return an id after creating a new entry. This helper function does only that.
         let (title, author) = (title.clone(), author.clone());
         match conn.run(  |c| {
-            blog::table
-                .filter(blog::author.eq(author))
-                .filter(blog::title.eq(title))
-                .select(blog::id)
+            post::table
+                .filter(post::author.eq(author))
+                .filter(post::title.eq(title))
+                .select(post::id)
                 .first::<i32>(c)
         }).await {
             Ok(id) => Some(id),
@@ -326,14 +326,14 @@ pub mod routes {
     }
 
     #[post("/", format="json", data="<new_post>")]
-    pub async fn post(conn: DbConn, new_post: Json<NewPost>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
+    pub async fn post_(conn: DbConn, new_post: Json<NewPost>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
         //Do not accept tags with a new post. User should attach tags in a seperate request.
         validate_user_input(&new_post)?;
         
         let (post_title, post_author) = (&new_post.title.clone(), &new_post.author.clone());
         
         match conn.run(move |c| {
-            diesel::insert_into(blog::table)
+            diesel::insert_into(post::table)
             .values(&new_post.into_inner())
             .execute(c)
         }).await {
@@ -424,7 +424,7 @@ pub mod routes {
 
         //Now remove the post
         match conn.run(move |c|{
-            diesel::delete(blog::table.filter(blog::id.eq(id))).execute(c)
+            diesel::delete(post::table.filter(post::id.eq(id))).execute(c)
         }).await {
             Ok(_) => return Ok(Json(AResponse::_200(None))),
             Err(e) => 

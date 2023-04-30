@@ -1,5 +1,7 @@
-table! {
-    blog (id) {
+// @generated automatically by Diesel CLI.
+
+diesel::table! {
+    post (id) {
         id -> Integer,
         title -> Varchar,
         author -> Varchar,
@@ -9,29 +11,29 @@ table! {
     }
 }
 
-table! {
-    blog_tags (id) {
+diesel::table! {
+    post_tags (id) {
         id -> Integer,
-        blog_id -> Integer,
+        post_id -> Integer,
         tag_id -> Integer,
     }
 }
 
-table! {
+diesel::table! {
     role (id) {
         id -> Integer,
         user_role -> Char,
     }
 }
 
-table! {
+diesel::table! {
     tag (id) {
         id -> Integer,
         name -> Varchar,
     }
 }
 
-table! {
+diesel::table! {
     user (id) {
         id -> Integer,
         email -> Nullable<Varchar>,
@@ -45,13 +47,13 @@ table! {
     }
 }
 
-joinable!(blog_tags -> blog (blog_id));
-joinable!(blog_tags -> tag (tag_id));
-joinable!(user -> role (role));
+diesel::joinable!(post_tags -> post (post_id));
+diesel::joinable!(post_tags -> tag (tag_id));
+diesel::joinable!(user -> role (role));
 
-allow_tables_to_appear_in_same_query!(
-    blog,
-    blog_tags,
+diesel::allow_tables_to_appear_in_same_query!(
+    post,
+    post_tags,
     role,
     tag,
     user,

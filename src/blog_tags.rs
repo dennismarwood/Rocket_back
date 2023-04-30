@@ -1,6 +1,6 @@
 use crate::config::DbConn;
 use crate::models::{AResponse, BlogTags, BlogEntry, Tag};
-use crate::schema::{blog_tags};
+use crate::schema::{post_tags};
 use diesel::prelude::*;
 use rocket::http::Status;
 use rocket::response::status;
@@ -30,7 +30,7 @@ pub async fn delete_entries(conn: &DbConn, key: BelongsTo) -> Result<usize, stat
             BelongsTo::PostTags((posts, tags)) => match 
                 diesel::delete(
                     BlogTags::belonging_to(&posts)//blog_tags rows matching posts
-                        .filter(blog_tags::tag_id
+                        .filter(post_tags::tag_id
                             .eq_any(&tags.into_iter().map(|tag| tag.id).collect::<Vec<i32>>())//blog_tags rows matching posts and tags
                         )
                 ).execute(c)
@@ -50,11 +50,11 @@ pub async fn add_entries(conn: &DbConn, mut post: Vec<BlogEntry>, tags: Vec<Tag>
 
     //create Vec<(blog_id, tag_id)
     let entries =
-        tags.into_iter().map(|tag| (blog_tags::blog_id.eq(post.id), blog_tags::tag_id.eq(tag.id))).collect::<Vec<_>>();
+        tags.into_iter().map(|tag| (post_tags::post_id.eq(post.id), post_tags::tag_id.eq(tag.id))).collect::<Vec<_>>();
 
     //add blog_id and tag_id to blog_tags table
     conn.run(move |c| {
-        match diesel::insert_into(blog_tags::table).values(entries).execute(c) {
+        match diesel::insert_into(post_tags::table).values(entries).execute(c) {
             Ok(tag_count) => Ok(tag_count),
             Err(e) => Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         }

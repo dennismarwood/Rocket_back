@@ -82,7 +82,7 @@ fn rocket() -> _ {
         .mount("/api/posts", routes![
             post::routes::get_posts,
             post::routes::get,
-            post::routes::post,
+            post::routes::post_,
             post::routes::patch,
             post::routes::delete,
             put_post_tag,

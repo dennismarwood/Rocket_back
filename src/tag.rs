@@ -1,5 +1,5 @@
 use crate::config::DbConn;
-use crate::schema::{tag, blog_tags};
+use crate::schema::{tag, post_tags};
 use crate::models::{Tag, AResponse, QParams, Filters, BlogTags};
 use diesel::prelude::*;
 use diesel::result::DatabaseErrorKind::{UniqueViolation, NotNullViolation };
@@ -310,7 +310,7 @@ pub mod routes {
 
         //Retrieve the post ids that have the specified tag
         match conn.run(move |c|{
-            let post_ids = match BlogTags::belonging_to(&target_tag).select(blog_tags::blog_id).distinct().load::<i32>(c) {
+            let post_ids = match BlogTags::belonging_to(&target_tag).select(post_tags::post_id).distinct().load::<i32>(c) {
                 Ok(post_ids) => post_ids,
                 Err(e) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
             };

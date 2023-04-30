@@ -1,4 +1,4 @@
-use super::schema::{blog, tag, blog_tags, user, role};
+use super::schema::{post, tag, post_tags, user, role};
 use rocket::serde::json::{Value};
 
 #[derive(Debug, FromForm)]
@@ -215,7 +215,7 @@ pub struct MyResponse {
 }
 
 #[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize, Clone)]
-#[diesel(table_name = blog)]
+#[diesel(table_name = post)]
 pub struct BlogEntry {
     pub id: i32,
     pub title: String,
@@ -233,19 +233,19 @@ pub struct Tag {
 }
 
 #[derive(serde::Serialize, Queryable, Associations, Identifiable, Debug, serde::Deserialize, Selectable, Insertable)]
-#[diesel(table_name = blog_tags)]
-#[diesel(belongs_to(BlogEntry, foreign_key = blog_id))]
+#[diesel(table_name = post_tags)]
+#[diesel(belongs_to(BlogEntry, foreign_key = post_id))]
 #[diesel(belongs_to(Tag))]
 pub struct BlogTags {
     pub id: i32,
-    pub blog_id: i32,
+    pub post_id: i32,
     pub tag_id: i32
 }
 
 #[derive(Insertable, serde::Deserialize)]
-#[diesel(table_name = blog_tags)]
+#[diesel(table_name = post_tags)]
 pub struct NewBlogTag {
-    pub blog_id: i32,
+    pub post_id: i32,
     pub tag_id: i32
 }
 
