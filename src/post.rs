@@ -420,7 +420,7 @@ pub mod routes {
         let target_post = retrieve_one_post(id, &conn).await?;
 
         //Remove the associated blog_tags for the post
-        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Post(target_post)).await?;
+        crate::post_tags::delete_entries(&conn, crate::post_tags::BelongsTo::Post(target_post)).await?;
 
         //Now remove the post
         match conn.run(move |c|{
@@ -446,7 +446,7 @@ pub mod routes {
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
 
-        crate::blog_tags::add_entries(&conn, target_post, tags).await?;
+        crate::post_tags::add_entries(&conn, target_post, tags).await?;
         Ok(status::NoContent)
     }
 
@@ -461,7 +461,7 @@ pub mod routes {
             Err(e) => 
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
-        crate::blog_tags::add_entries(&conn, target_post, tags).await?;
+        crate::post_tags::add_entries(&conn, target_post, tags).await?;
         Ok(status::NoContent)      
     }
 
@@ -493,7 +493,7 @@ pub mod routes {
             Err(e) => 
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         };
-        crate::blog_tags::add_entries(&conn, target_post, tags).await?;
+        crate::post_tags::add_entries(&conn, target_post, tags).await?;
         Ok(status::NoContent)
         
     }
@@ -525,10 +525,10 @@ pub mod routes {
 
         
         //Remove any existing tags attached to the post
-        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Post(target_post.clone())).await?;
+        crate::post_tags::delete_entries(&conn, crate::post_tags::BelongsTo::Post(target_post.clone())).await?;
 
         //Add new tags
-        crate::blog_tags::add_entries(&conn, target_post, tags).await?;
+        crate::post_tags::add_entries(&conn, target_post, tags).await?;
         Ok(status::NoContent)
         
     }
@@ -548,7 +548,7 @@ pub mod routes {
         };
 
         //Remove the associated blog_tags for the post and tag
-        crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::PostTags((target_post, target_tags))).await?;
+        crate::post_tags::delete_entries(&conn, crate::post_tags::BelongsTo::PostTags((target_post, target_tags))).await?;
         Ok(status::NoContent)
     }
 }

@@ -284,7 +284,7 @@ pub mod routes {
         );
 
         //Remove the associated blog_tags for the tag
-        let blog_tags_count = match crate::blog_tags::delete_entries(&conn, crate::blog_tags::BelongsTo::Tag(target_tag)).await {
+        let blog_tags_count = match crate::post_tags::delete_entries(&conn, crate::post_tags::BelongsTo::Tag(target_tag)).await {
             Ok(ok) => ok,
             Err(e) => 
                 return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),

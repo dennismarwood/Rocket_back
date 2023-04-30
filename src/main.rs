@@ -11,7 +11,7 @@ mod schema;
 mod auth;
 mod pw;
 mod jwt;
-mod blog_tags;
+mod post_tags;
 mod myjsonapi;
 
 mod api;
