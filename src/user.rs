@@ -108,7 +108,7 @@ pub mod routes {
     } 
     
     #[get("/")]//
-    pub async fn get_user(conn:DbConn, user_id: ValidSession) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+    pub async fn get_user(conn:DbConn, user_id: ValidSession, _x: Level1) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
         match conn.run(move |c: &mut MysqlConnection| {
             user::table
                 .filter(user::id.eq(user_id.id))
@@ -236,7 +236,7 @@ pub mod routes {
     }
 
     #[delete("/session")]
-    pub async fn end_session(jar: &CookieJar<'_>) -> Status {
+    pub async fn end_session(jar: &CookieJar<'_>, _x: Level1) -> Status {
         jar.remove(Cookie::named("jwt"));
         Status::Ok 
     }

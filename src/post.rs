@@ -10,7 +10,7 @@ use rocket::response::status;
 use rocket::serde::json::{Json, json};
 
 pub mod routes {
-    //use crate::auth::Level1;
+    use crate::auth::Level1;
     //pub async fn new_post<'a>(conn: DbConn, new_entry: Json<NewBlogEntryWithTags>, _x: Level1)
 
     use super::*;
@@ -326,7 +326,7 @@ pub mod routes {
     }
 
     #[post("/", format="json", data="<new_post>")]
-    pub async fn post_(conn: DbConn, new_post: Json<NewPost>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
+    pub async fn post_(conn: DbConn, new_post: Json<NewPost>, _x: Level1) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
         //Do not accept tags with a new post. User should attach tags in a seperate request.
         validate_user_input(&new_post)?;
         
@@ -366,7 +366,7 @@ pub mod routes {
     }
 
     #[patch("/<id>",  format="json", data="<new_post>")]
-    pub async fn patch(id: i32, conn: DbConn, new_post: Json<NewPost>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+    pub async fn patch(id: i32, conn: DbConn, new_post: Json<NewPost>, _x: Level1) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
         //TODO NewPost is the wrong data type here. Need one that just takes in the optional post title and optional post content.
         //Do not accept tags with a patch. User should attach tags in a seperate request.
         validate_user_input(&new_post)?;
@@ -415,7 +415,7 @@ pub mod routes {
     }
 
     #[delete("/<id>")]
-    pub async fn delete(id: i32, conn: DbConn) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
+    pub async fn delete(id: i32, conn: DbConn, _x: Level1) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
         let target_post = retrieve_one_post(id, &conn).await?;
 
@@ -433,7 +433,7 @@ pub mod routes {
     }
 
     #[put("/<post_id>/tags/<tag_id>")]
-    pub async fn put_post_tag(post_id: i32, tag_id: i32, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+    pub async fn put_post_tag(post_id: i32, tag_id: i32, conn: DbConn, _x: Level1) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
         let target_post = retrieve_one_post(post_id, &conn).await?;
 
@@ -451,7 +451,7 @@ pub mod routes {
     }
 
     #[patch("/<id>/tags?<tag_params..>", rank = 2)]
-    pub async fn patch_post_tags(id: i32, tag_params: QParams, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+    pub async fn patch_post_tags(id: i32, tag_params: QParams, conn: DbConn, _x: Level1) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
         let target_post = retrieve_one_post(id, &conn).await?;
 
@@ -466,7 +466,7 @@ pub mod routes {
     }
 
     #[patch("/<id>/tags", format="json", data="<tags>", rank = 1)]
-    pub async fn patch_post_tags_form(id: i32, tags: Json<Tags>, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+    pub async fn patch_post_tags_form(id: i32, tags: Json<Tags>, conn: DbConn, _x: Level1) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //TODO: 
         // Updating the openapi docs has made me realize that all of my inserts are NOT "All or nothing" / transactional operations.
         // A user could pass in invalid tags or a mix of valid / invalid tags and never be aware that their insert partially failed (code 207).
@@ -499,7 +499,7 @@ pub mod routes {
     }
 
     #[put("/<id>/tags", format="json", data="<tags>")]
-    pub async fn put_post_tags_form(id: i32, tags: Json<Tags>, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+    pub async fn put_post_tags_form(id: i32, tags: Json<Tags>, conn: DbConn, _x: Level1) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
         let target_post = retrieve_one_post(id, &conn).await?;
 
@@ -534,7 +534,7 @@ pub mod routes {
     }
 
     #[delete("/<id>/tags/<tag_id>")]
-    pub async fn delete_post_tag(id: i32, tag_id: i32, conn: DbConn) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
+    pub async fn delete_post_tag(id: i32, tag_id: i32, conn: DbConn, _x: Level1) -> Result< status::NoContent, status::Custom<Json<AResponse>> > {
         //Retrieve the target post
         let target_post = retrieve_one_post(id, &conn).await?;
 

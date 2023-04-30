@@ -10,6 +10,7 @@ use rocket::serde::json::{Json, json};
 
 
 pub mod routes {
+    use crate::auth::Level1;
     use diesel::mysql::Mysql;
     use super::*;
 
@@ -179,7 +180,7 @@ pub mod routes {
     }
 
     #[post("/", format="json", data="<new_tag>")]
-    pub async fn post(conn: DbConn, new_tag: Json<NewTag>) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
+    pub async fn post(conn: DbConn, new_tag: Json<NewTag>, _x: Level1) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
         //Diesel does not have an error code for invalid input. Manually check.
         if !(1..=100).contains(&new_tag.name.len()) {
             return Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
@@ -224,7 +225,7 @@ pub mod routes {
     }
 
     #[patch("/<id>",  format="json", data="<new_tag>")]//Patch 204 400 404 422
-    pub async fn patch(id: i32, conn: DbConn, new_tag: Json<NewTag>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+    pub async fn patch(id: i32, conn: DbConn, new_tag: Json<NewTag>, _x: Level1) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
         //Diesel does not have an error code for invalid input. Manually check.
         if !(1..=100).contains(&new_tag.name.len()) {
             return Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
@@ -271,7 +272,7 @@ pub mod routes {
     }
 
     #[delete("/<id>")]//Delete 204 400 404 422
-    pub async fn delete(id: i32, conn: DbConn) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
+    pub async fn delete(id: i32, conn: DbConn, _x: Level1) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
         //Retrieve the target tag
         let target_tag = retrieve_one_tag(id, &conn).await?;
 
