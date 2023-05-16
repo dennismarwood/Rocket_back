@@ -1,6 +1,66 @@
-use super::schema::{blog, tag, blog_tags, user, role};
-use rocket::response;
+use super::schema::{post, tag, post_tags, user, role};
 use rocket::serde::json::{Value};
+
+#[derive(Debug, FromForm)]
+    pub struct QParams {
+        pub start: Option<i64>,
+        pub step: Option<i64>,
+        pub filter: Filters,
+        pub order: Vec<String> 
+        //grouped_by: Use this to handle the data from many to 1 table relations
+    }
+    
+    impl QParams {
+        pub fn new_filter(filter: Filters) -> Self {
+            QParams {
+                filter,
+                start: None,
+                step: None,
+                order: Vec::new(),
+            }
+        }
+
+        pub fn calculate_limit(&self) -> i64 {
+            /*
+            Some functions, such as the put on posts, can purposely pass empty filter values
+            or the user may pass invalid values thus effectively passing empty filter values.
+            Empty filters will return all entries as it is an sql select w/o any where clause.
+            To address this, look at all the filters. If they are empty assume the user does NOT
+            acutally want an unconstrained search and return an empty set to them. 
+
+            This method should only be called if the user did not specify a step value in their query.
+            */
+
+            if  self.filter.like.len() +
+                self.filter.eq.len() +
+                self.filter.ge.len() +
+                self.filter.le.len() +
+                self.filter.between.len() == 0 {return 0}
+            //10 is the default value if not specified by the user.
+            10
+        }
+    }
+    
+    #[derive(Debug, FromForm)]
+    pub struct Filters {
+        pub like: Vec<String>,
+        pub eq: Vec<String>,
+        pub ge: Vec<String>,
+        pub le: Vec<String>,
+        pub between: Vec<String>,
+    }
+    
+    impl Filters {
+        pub fn new_eq(eq: Vec<String>) -> Self {
+            Filters {
+                eq,
+                like: Vec::new(),
+                ge: Vec::new(),
+                le: Vec::new(),
+                between: Vec::new(), 
+            }
+        }
+    }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct ErrorResponse {
@@ -61,7 +121,7 @@ pub struct AResponse {
 }
 
 impl AResponse {
-    pub fn success_200(data: Option<Value>) -> Self {
+    pub fn _200(data: Option<Value>) -> Self {
         AResponse { 
             status: String::from("Success"), 
             data: data,
@@ -71,14 +131,73 @@ impl AResponse {
             errors: None,
         }
     }
-    pub fn error(message: Option<String>, code: Option<String>, 
-        errors: Option<Value>) -> Self {
+    pub fn _201(location: Option<String>) -> Self {
+        AResponse { 
+            status: String::from("Success"), 
+            data: None,
+            message: Some(String::from("Resource created Successfully")),
+            location: location,
+            code: None,
+            errors: None,
+        }
+    }
+    pub fn _400(message: Option<String>) -> Self {
+        AResponse {
+            status: String::from("Error"),
+            data: None,
+            message: message,
+            location: None,
+            code: Some(String::from("INVALID_USER_INPUT")),
+            errors: None,
+        }
+    }
+    pub fn _401(message: Option<String>) -> Self {
+        AResponse {
+            status: String::from("Error"),
+            data: None,
+            message: message,
+            location: None,
+            code: Some(String::from("UNAUTHORIZED")),
+            errors: None,
+        }
+    }
+    pub fn _404(message: Option<String>) -> Self {
+        AResponse {
+            status: String::from("Error"),
+            data: None,
+            message: message,
+            location: None,
+            code: Some(String::from("NOT_FOUND")),
+            errors: None,
+        }
+    }
+    pub fn _422(message: Option<String>, code: Option<String>, errors: Option<Value>) -> Self {
             AResponse {
                 status: String::from("Error"),
                 data: None,
                 message: message,
                 location: None,
                 code: code,
+                errors: errors,
+            }
+    }
+    pub fn _500() -> Self {
+        AResponse {
+            status: String::from("Error"),
+            data: None,
+            message: Some(String::from("Our apologies, something went wrong.")),
+            location: None,
+            code: Some(String::from("INTERNAL_SERVER_ERROR")),
+            errors: None,
+        }
+}
+    pub fn error(errors: Option<Value>) -> Self {
+            AResponse {
+                status: String::from("Error"),
+                data: None,
+                message: Some(String::from("An unexpected error type has occured.")),
+                location: None,
+                code: Some(String::from("UNEXPECTED_ERROR_TYPE")),
                 errors: errors,
             }
     }
@@ -95,14 +214,8 @@ pub struct MyResponse {
     pub errors: Vec<ErrorResponse>,
 }
 
-impl MyResponse {
-    pub fn new() -> Self {
-        MyResponse {errors: vec![], information: vec![], payloads: vec![]}
-    }
-}
-
-#[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize)]
-#[table_name = "blog"]
+#[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize, Clone)]
+#[diesel(table_name = post)]
 pub struct BlogEntry {
     pub id: i32,
     pub title: String,
@@ -112,36 +225,36 @@ pub struct BlogEntry {
     pub content: Option<String>,
 }
 
-#[derive(serde::Serialize, Queryable, Identifiable, Debug)]
-#[table_name="tag"]
+#[derive(serde::Serialize, Queryable, Identifiable, Debug, serde::Deserialize, AsChangeset, Selectable, PartialEq)]
+#[diesel(table_name = tag)]
 pub struct Tag {
     pub id: i32,
     pub name: String,
 }
 
-#[derive(serde::Serialize, Queryable, Associations, Identifiable, Debug, serde::Deserialize)]
-#[table_name = "blog_tags"]
-#[belongs_to(BlogEntry, foreign_key = "blog_id")]
-#[belongs_to(Tag)]
+#[derive(serde::Serialize, Queryable, Associations, Identifiable, Debug, serde::Deserialize, Selectable, Insertable)]
+#[diesel(table_name = post_tags)]
+#[diesel(belongs_to(BlogEntry, foreign_key = post_id))]
+#[diesel(belongs_to(Tag))]
 pub struct BlogTags {
     pub id: i32,
-    pub blog_id: i32,
+    pub post_id: i32,
     pub tag_id: i32
 }
 
 #[derive(Insertable, serde::Deserialize)]
-#[table_name="blog_tags"]
+#[diesel(table_name = post_tags)]
 pub struct NewBlogTag {
-    pub blog_id: i32,
+    pub post_id: i32,
     pub tag_id: i32
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Identifiable, Queryable, Associations, PartialEq, Debug)]
-#[table_name="user"]
-#[belongs_to(Role, foreign_key = "role")]
+#[derive(serde::Serialize, serde::Deserialize, Identifiable, Queryable, Associations, PartialEq, Debug, Selectable)]
+#[diesel(table_name = user)]
+#[diesel(belongs_to(Role, foreign_key = role))]
 pub struct User {
     pub id: i32,
-    pub email: Option<String>,
+    pub email: String,
     pub phc: Option<String>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
@@ -152,7 +265,7 @@ pub struct User {
 }
 
 #[derive(Insertable, serde::Deserialize, Queryable, Debug)]
-#[table_name="user"]
+#[diesel(table_name = user)]
 pub struct NewUser {
     pub email: String,
     pub phc: Option<String>,
@@ -163,7 +276,7 @@ pub struct NewUser {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Identifiable, Queryable, PartialEq, Debug)]
-#[table_name="role"]
+#[diesel(table_name = role)]
 pub struct Role {
     pub id: i32,
     pub user_role: String,

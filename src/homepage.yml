@@ -3,7 +3,7 @@ openapi: '3.0.1'
 # https://github.com/42Crunch/vscode-openapi/issues/129
 info:
   title: DennisMarwood.com
-  description: CRUD blog entries for homepage.
+  description: CRUD post entries for homepage blog.
   contact:
       name: Dennis Marwood,
       url: https://dennismarwood.com/contact,
@@ -12,68 +12,48 @@ info:
   #license:
     #name: 
     #url:
-servers: #Check on passing in a variable here
+servers:
   - url: http://localhost:8001/api
-    description: Dev Back
+    description: Dev Back V1
   - url: http://127.0.0.1:8001/api
-    description: Dev Back
+    description: Dev Back V1
 paths:
   /users:
     get:
-      summary: Return a list of users.
-      description: The API allows users to filter the list of users by specifying query parameters that match columns in the database. Additionally, users can control the number of results returned using the start and step parameters.
-      operationId: listUsersV1
+      summary: Return data about a user based on requester's session.
+      description: Requires active session or returns 401.
+      operationId: getUserV1
       tags:
         - Users
-      parameters:
-        - $ref: "#/components/parameters/ListStartParam"
-        - $ref: "#/components/parameters/ListStepParam" 
-        - $ref: "#/components/parameters/Filter"
-        - $ref: "#/components/parameters/OrderBy" 
+      security:
+        - CookieJWT: []
       responses:
         '200':
-          description: A list of users.
+          description: A user entry w/o phc data.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/user_list"
-              example:
-                - id: 1
-                  email: john.doe@example.com
-                  phc: "somehashvalue"
-                  first_name: John
-                  last_name: Doe
-                  created: "2022-03-21T15:23:57.345Z"
-                  role: 1
-                  active: 1
-                  last_access: "2022-03-21"
-                - id: 2
-                  email: jane.smith@example.com
-                  phc: "someotherhashvalue"
-                  first_name: Jane
-                  last_name: Smith
-                  created: "2022-03-22T10:10:10.000Z"
-                  role: 2
-                  active: 0
-                  last_access: "2022-03-22"
-        '204':
-          description: 'The search parameters yielded zero results'
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/204_error"
+                allOf:
+                - $ref: "#/components/schemas/success"
+                - type: object
+                  properties:
+                    data:
+                      $ref: "#/components/schemas/user_no_phc"        
         default:
           description: An error has occured.
           content:
             application/json:
               schema: 
-                $ref: "#/components/schemas/server_error"
+                allOf:
+                  - $ref: "#/components/schemas/error"
     post:
       summary: Create a new user.
-      description: When valid fieds are passed in the request body, a new user will be created. A 201 will contain the new user id.
-      operationId: updateUserV1
+      description: A new user will be created.
+      operationId: postUserV1
       tags:
         - Users
+      security:
+        - CookieJWT: []
       requestBody:
         required: true
         content:
@@ -83,47 +63,30 @@ paths:
       responses:
         '201':
           description: The new user has been created.
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/user"
-        '400':
-          description: The request is invalid or malformed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/400_error"  
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"  
   /users/{id}:
-    get:
-      summary: Return a single user entry.
-      description: When a valid user id is passed in, a user object is returned.
-      operationId: listUserV1
-      tags:
-        - Users
-      responses:
-        '200':
-          description: A user entry.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  payloads:
-                    type: array
-                    items: {  
-                      type: string,
-                      $ref: "#/components/schemas/user"
-                    }
-        '404':
-          description: 'No user with that id exists.'
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/404_error"
     patch:
       summary: Update an existing user.
+      description: Pass in any fields that you want to update.
+      operationId: patchUserV1
       tags:
         - Users
+      security:
+        - CookieJWT: []
+      parameters:
+        - name: userId
+          in: path
+          description: The ID of the user to update
+          required: true
+          schema:
+            type: integer
+            format: int32
       requestBody:
         required: true
         content:
@@ -131,24 +94,23 @@ paths:
             schema:
               $ref: "#/components/schemas/user_input"
       responses:
-        '204':
-          description: The user has been updated.
+        '201':
+          description: Your changes have been applied.
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/user"
-        '304':
-          description: Failed to update the user.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/user"
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     delete:
       summary: Delete a user by ID
       description: Deletes the user identified by the given ID.
-      operationId: deleteUser
+      operationId: deleteUserV1
       tags:
         - Users
+      security:
+        - CookieJWT: []
       parameters:
         - name: userId
           in: path
@@ -159,104 +121,71 @@ paths:
             format: int32
       responses:
         '204':
-          description: User deleted successfully.
+          description: The user has been deleted.
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/204_error"
-        '404':
-          description: User not found.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/404_error"
-        '500':
-          description: Internal server error.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/500_error"
-  /users/{id}/posts:
-    get:
-      summary: Return specified blogs entries for a user
-      description: When a valid user id is passed in, a user object is returned along with the corresponding blog entries.
-      operationId: listUserBlogsV1
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
+  /users/session:
+    post:
+      summary: Create a new session.
+      description: A cookie named jwt will be loaded into your browser.
+      operationId: postUserSessionV1
       tags:
         - Users
-      parameters:
-        - name: userId
-          in: path
-          description: ID of the user whose blog posts to retrieve.
-          required: true
-          schema:
-            type: integer
-            format: int32
-        - $ref: "#/components/parameters/ListStartParam"
-        - $ref: "#/components/parameters/ListStepParam" 
-        - $ref: "#/components/parameters/Filter"
-        - $ref: "#/components/parameters/OrderBy" 
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/login_input"
       responses:
         '200':
-          description: Blog posts created by the user.
+          description: A new session has been created.
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  payload:
-                    type: object
-                    properties:
-                      user:
-                        $ref: '#/components/schemas/user'
-                      blog_posts:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/post'
-                          tags:
-                            type: array
-                            items:
-                              $ref: '#/components/schemas/tag'
-              example:
-                {
-                "payload": {
-                  "user": {
-                    "id": 123,
-                    "name": "John Doe",
-                    "email": "johndoe@example.com",
-                    "created_at": "2022-01-01T12:00:00Z",
-                    "updated_at": "2022-01-01T12:00:00Z"
-                  },
-                  "blog_posts": [
-                    {
-                      "id": 1,
-                      "title": "My first blog post",
-                      "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
-                      "created_at": "2022-01-01T12:00:00Z",
-                      "updated_at": "2022-01-01T12:00:00Z",
-                      "tags": ["tag1", "tag2"]
-                    },
-                    {
-                      "id": 2,
-                      "title": "My second blog post",
-                      "content": "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-                      "created_at": "2022-01-02T12:00:00Z",
-                      "updated_at": "2022-01-02T12:00:00Z",
-                      "tags": ["tag1", "tag2"]
-                    }
-                  ]
-                }
-              }
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
+    delete:
+      summary: Delete your session
+      description: Deletes your current session.
+      operationId: deleteUserSessionV1
+      tags:
+        - Users
+      security:
+        - CookieJWT: []
+      responses:
+        '200':
+          description: The session has been deleted.
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
+  
   /posts:
     get:
-      summary: Return a list of blog entries.
-      description: The API allows users to filter the list of posts by specifying query parameters that match columns in the database. Additionally, users can control the number of results returned using the start and step parameters.
-      operationId: listPostV1
+      summary: Return a list of blog posts.
+      description: The API allows users to filter the type and quantity of posts by specifying query parameters that match columns in the database.
+      operationId: GetPostsV1
       tags:
         - Posts
       parameters:
         - $ref: "#/components/parameters/ListStartParam"
         - $ref: "#/components/parameters/ListStepParam" 
-        - $ref: "#/components/parameters/Filter"
+        - $ref: "#/components/parameters/Filter.eq"
+        - $ref: "#/components/parameters/Filter.le"
+        - $ref: "#/components/parameters/Filter.ge"
+        - $ref: "#/components/parameters/Filter.like"
+        - $ref: "#/components/parameters/Filter.between"
         - $ref: "#/components/parameters/OrderBy"
       responses:
         '200':
@@ -264,13 +193,29 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/post_list"
+                allOf:
+                - $ref: "#/components/schemas/success"
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/post_with_tags"
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     post:
       summary: Create a new post.
-      description: When valid fieds are passed in the request body, a new post will be created. A 201 will contain the new post id.
+      description: When valid fieds are passed in the request body, a new post will be created. A 201 will contain the new post id. The session jwt will be used to determine the author automatically.
       operationId: updatePostV1
       tags:
         - Posts
+      security:
+        - CookieJWT: []
       requestBody:
         required: true
         content:
@@ -283,18 +228,21 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/post"
-        '400':
-          description: The request is invalid or malformed.
+                allOf:
+                  - $ref: "#/components/schemas/success_201"
+                  - type: object
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/400_error"  
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error" 
   /posts/{id}:
     get:
       summary: Return a single post.
       description: When a valid post id is passed in, a post object is returned.
-      operationId: listPostV1
+      operationId: GetPostV1
       tags:
         - Posts
       responses:
@@ -303,24 +251,27 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  payloads:
-                    type: array
-                    items: {  
-                      type: string,
-                      $ref: "#/components/schemas/post"
-                    }
-        '404':
-          description: 'No post with that id exists.'
+                allOf:
+                  - $ref: "#/components/schemas/success"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/post_with_tags"
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/404_error"
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     patch:
       summary: Update an existing Post.
+      description: Title and content of the post can be altered.
+      operationId: PatchPostV1
       tags:
         - Posts
+      security:
+        - CookieJWT: []
       requestBody:
         required: true
         content:
@@ -329,23 +280,22 @@ paths:
               $ref: "#/components/schemas/post_input"
       responses:
         '204':
-          description: The post has been updated.
+          description: The post has been updated. No further response.
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/post"
-        '304':
-          description: Failed to update the post.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/post"
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     delete:
       summary: Delete a post by ID
       description: Deletes the post identified by the given ID.
-      operationId: deletePost
+      operationId: DeletePostV1
       tags:
         - Posts
+      security:
+        - CookieJWT: []
       parameters:
         - name: postId
           in: path
@@ -356,119 +306,264 @@ paths:
             format: int32
       responses:
         '204':
-          description: Post deleted successfully.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/204_error"
-        '404':
-          description: Post not found.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/404_error"
-        '500':
-          description: Internal server error.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/500_error"
-  /tags:
-    get:
-      summary: Return a list of post tags.
-      description: Use the start and step parameters to get tags.
-      operationId: listTagsV1
-      tags:
-        - Tags      
-      parameters:
-        - $ref: "#/components/parameters/ListStartParam"
-        - $ref: "#/components/parameters/ListStepParam" 
-        - $ref: "#/components/parameters/Filter"
-        - $ref: "#/components/parameters/OrderBy"              
-      responses:
-        '200':
-          description: A list of post tags.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  payloads:
-                    type: array
-                    items: {  
-                      type: array,
-                      items: {
-                        type: string,
-                        $ref: "#/components/schemas/post_tag"
-                      }
-                    }
-        '204':
-          description: 'The search parameters yielded zero results'
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/204_error"
+          description: The post has been deleted. No further response.
         default:
           description: An error has occured.
           content:
             application/json:
               schema: 
-                $ref: "#/components/schemas/server_error"
+                allOf:
+                  - $ref: "#/components/schemas/error"
+  /posts/{id}/tags:
+    patch:
+      summary: Add tags to a post.
+      description: Use either query params or pass along a form to add tags to a post. Note the **Request Body** drop down below.
+      operationId: PatchPostTagsV1
+      tags:
+        - Posts
+      security:
+        - CookieJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ListStartParam"
+        - $ref: "#/components/parameters/ListStepParam" 
+        - $ref: "#/components/parameters/Filter.eq"
+        - $ref: "#/components/parameters/Filter.le"
+        - $ref: "#/components/parameters/Filter.ge"
+        - $ref: "#/components/parameters/Filter.like"
+        - $ref: "#/components/parameters/Filter.between"
+        - $ref: "#/components/parameters/OrderBy"
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded: {}
+          application/json:
+            schema:
+              $ref: "#/components/schemas/bulk_tags"
+      responses:
+        '204':
+          description: The post has been updated. No further response.
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
+    put:
+      summary: Replace all tags on a post.
+      description: The body should contain some combination of "names" and "ids" for tags. All existing tags are replaced. An empty set will render the post tagless.
+      operationId: PutPostTagsV1
+      tags:
+        - Posts
+      security:
+        - CookieJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/bulk_tags"
+      responses:
+        '204':
+          description: The post has been updated. No further response.
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
+  /posts/{id}/tags/{id}:
+    put:
+      summary: Add a tag to a post.
+      description: Invalid tag id will return 404, invalid tag id will return 204.
+      operationId: PutPostTagV1
+      tags:
+        - Posts
+      security:
+        - CookieJWT: []
+      parameters:
+        - name: postId
+          in: path
+          description: The ID of the post in reference.
+          required: true
+          schema:
+            type: integer
+            format: int32
+        - name: tagId
+          in: path
+          description: The ID of the tag to append to the post.
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '204':
+          description: The post has been updated. No further response.
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
+    delete:
+      summary: Delete a tag from a post.
+      description: Deletes the tag identified by the given ID.
+      operationId: DeletePostTagV1
+      tags:
+        - Posts
+      security:
+        - CookieJWT: []
+      parameters:
+        - name: postId
+          in: path
+          description: The ID in reference.
+          required: true
+          schema:
+            type: integer
+            format: int32
+        - name: tagId
+          in: path
+          description: The ID of the tag to removed from the post.
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '204':
+          description: The post has been deleted. No further response.
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
+  
+  /tags:
+    get:
+      summary: Return a list of post tags.
+      description: Use the start and step parameters to get tags.
+      operationId: GetTagsV1
+      tags:
+        - Tags
+      parameters:
+        - $ref: "#/components/parameters/ListStartParam"
+        - $ref: "#/components/parameters/ListStepParam" 
+        - $ref: "#/components/parameters/Filter.eq"
+        - $ref: "#/components/parameters/Filter.le"
+        - $ref: "#/components/parameters/Filter.ge"
+        - $ref: "#/components/parameters/Filter.like"
+        - $ref: "#/components/parameters/Filter.between"
+        - $ref: "#/components/parameters/OrderBy"       
+      responses:
+        '200':
+          description: A list of post tags. 
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/success"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/tags"
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     post:
       summary: Create a new tag.
       description: When valid fieds are passed in the request body, a new tag will be created. A 201 will contain the new tag id.
-      operationId: updatePostV1
+      operationId: PostTagV1
       tags:
         - Tags
+      security:
+        - CookieJWT: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/post_tag_input"
+              $ref: "#/components/schemas/tag_input"
       responses:
         '201':
-          description: The new post has been created.
+          description: A new tag was created. This respone will contain a link to the new tag. 
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/post_tag"
-        '400':
-          description: The request is invalid or malformed.
+                allOf:
+                  - $ref: "#/components/schemas/success_201"
+                  - type: object
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/400_error"  
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
   /tags/{tagID}:
-    patch:
-      summary: Update an existing tag.
+    get:
+      summary: Retrieve an existing tag by its id.
+      description: A valid id returns a single tag.
+      operationId: GetTagV1
       tags:
         - Tags
+      responses:
+        '200':
+          description: A single tag.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/success"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/tags"
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
+    patch:
+      summary: Update an existing tag by id.
+      description: The name field can be altered.
+      operationId: PatchTagV1
+      tags:
+        - Tags
+      security:
+        - CookieJWT: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/post_tag_input"
+              $ref: "#/components/schemas/tag_input"
       responses:
         '204':
-          description: The tag has been updated.
+          description: Updated tag. No further response.
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/post_tag"
-        '304':
-          description: Failed to update the user.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/post_tag"
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
     delete:
       summary: Delete a tag by ID
-      description: Deletes the tag identified by the given ID.
-      operationId: deleteTagV1
+      description: Deletes the tag identified by the given ID. Deleted tags are also removed from posts.
+      operationId: DeleteTagV1
       tags:
         - Tags
+      security:
+        - CookieJWT: []
       parameters:
         - name: tagId
           in: path
@@ -478,25 +573,53 @@ paths:
             type: integer
             format: int32
       responses:
-        '204':
-          description: Tag deleted successfully.
+        '200':
+          description: Tag deleted successfully. Included in the body will be the number of posts that were using the tag.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/204_error"
-        '404':
-          description: Tag not found.
+                allOf:
+                  - $ref: "#/components/schemas/success"
+                  - type: object
+                    properties:
+                      Affected posts:
+                        type: integer
+                        default: 3
+        default:
+          description: An error has occured.
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"    
+  /tags/{tagID}/posts:
+    get:
+      summary: Retrieve all the posts that are using the specified tag.
+      description: A valid id will return a set of posts using the tag. Invalid ids will 404.
+      operationId: PostsWithTagsV1
+      tags:
+        - Tags
+      responses:
+        '200':
+          description: A collection of posts using the tag.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/404_error"
-        '500':
-          description: Internal server error.
+                allOf:
+                - $ref: "#/components/schemas/success"
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/post_with_tags"
+        default:
+          description: An error has occured.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/500_error"
-                      
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/error"
 components:
   parameters:
     ListStartParam:
@@ -504,14 +627,10 @@ components:
       in: query
       description: 
         "
-        Works in conjunction with the ListStepParam.<br>
-        Items returned = (start * step) + step.<br>
-        Assume the query orders by item_id ascending.<br>
-        For example: You provide a start of 0 and a step of 10. A list of 
-        the 'first' ten items will be returned. A start of 2 and a step of 3 would 
-        return a list of 3 items returned at the 6th - 8th places.<br>
-        Start and Step combinations that query up to and beyond the available entries
-        are valid. In such query a 'short' or empty list will be returned.
+        A starting index or page. Works in tandem with the step parameter.<br>
+        Example: start=2&step=10<br>
+        This would retrieve items 20 through 30.<br>
+        Calculation: (2 * 10) through ((2 * 10) + 10)
         "
       schema:
         type: integer
@@ -525,7 +644,7 @@ components:
       in: query
       description:         
         "
-        See the ListStartParam description.
+        See the *start* description.
         "
       schema:
         type: integer
@@ -549,106 +668,158 @@ components:
       required: true
       schema:
         type: string
-    Filter:
-      name: filter
+    Filter.eq:
+      name: filter.eq
       in: query
       required: false
       description: 
         "
-        Matches on any field in the objects table. For example, in the Users table a column of 'name' exists. 
-        You could, effectively, perform a query filter during the lookup of Users on the 'name' field.
+        Synonymous with an SQL \"Equal\" operator provided to a \"Where\" clause. Multiple uses is synonymous with the SQL \"In\" operator. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored.
         "
       schema:
-        type: object
-        additionalProperties:
+        type: array
+        items:
           type: string
-      examples:
-        example1:
-          summary: Sort by creation date in descending order, then by title in ascending order.
-          value: "sort=-created_at,name"
+      style: form
+      explode: true
+      example: "id=10"
+    Filter.ge:
+      name: filter.ge
+      in: query
+      required: false
+      description: 
+        "
+        Synonymous with an SQL \"Greater Than or Equal To\" operator provided to a \"Where\" clause. Multiple uses are cumulative, passing all operations to db. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored.
+        "
+      schema:
+        type: array
+        items:
+          type: string
+      example: "id=10"
+    Filter.le:
+      name: filter.le
+      in: query
+      required: false
+      description: 
+        "
+        Synonymous with an SQL \"Less Than or Equal To\" operator provided to a \"Where\" clause. Multiple uses are cumulative, passing all operations to db. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored.
+        "
+      schema:
+        type: array
+        items:
+          type: string
+      example: "id=10"
+    Filter.like:
+      name: filter.like
+      in: query
+      required: false
+      description: 
+        "
+        Synonymous with an SQL \"Like\" operator provided to a \"Where\" clause. Multiple uses are cumulative, passing all operations to db. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored. Include \"%\" \
+        as a wildcard.
+        "
+      schema:
+        type: array
+        items:
+          type: string
+      example: "tag_name=%ello Worl%"
+    Filter.between:
+      name: filter.between
+      in: query
+      required: false
+      description: 
+        "
+        Synonymous with an SQL \"Between\" operator provided to a \"Where\" clause. Multiple uses is synonymous with the SQL \"In\" operator. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored.
+        "
+      schema:
+        type: array
+        items:
+          type: string
+      examples: 
+        digits: 
+          value: "id=10,20"
+          summary: "id=10,20"
+        dates:
+          value: "created=01-01-2023,02-02-2023"
+          summary: "created=01-01-2023,02-02-2023"
     OrderBy:
       name: orderBy
       in: query
       required: false
-      description: Sort the results by one or more fields, separated by commas. Use a "-" prefix to sort in descending order.
+      description: 
+        "
+        Synonymous with an SQL \"Order by\" keyword. Multiple columns can be sorted. Prepending a \"-\" is synonymous with the \"DESC\" keyword. \
+        Pertintent to nearly all columns relating to the search subject. Inapplicable (or invalid) columns are simply ignored.
+        "
       schema:
-        type: string
+        type: array
+        items:
+          type: string
+      style: form
+      explode: true
+      example: "-id"
   schemas:
-    server_error:
-      description: An error occured. Some data may be provided below.
+    success:
+      description: A 200 series responses
       type: object
       properties:
-        error:
-          type: object
-          properties:
-            code:
-              type: integer
-              default: 0
-            message:
-              type: string
-              default: "Could not provide the error message."
-    204_error:
-      description: The provided query parameter(s) yielded zero results.
+        status:
+          type: string
+          default: "Success"
+    success_201:
+      description: A 201
       type: object
       properties:
-        error:
-          type: object
-          properties:
-            code:
-              type: integer
-              default: 204
-            message:
-              type: string
-              default: "The URI format was valid but the provided query parameters yielded zero results."
-    404_error:
-      description: The specified URI does not exist.
+        status:
+          type: string
+          default: "Success"
+        message:
+          type: string
+          default: "Resource created successfully."
+        location:
+          type: string
+          format: URI
+          default: "https://dennismarwood.com/{object}/{new_id}"
+          description: "A URI to the newly created resource"
+    error:
+      description: Any non 200 series response.
       type: object
       properties:
-        error:
-          type: object
-          properties:
-            code:
-              type: integer
-              default: 404
-            message:
-              type: string
-              default: "The specified URI does not exist because the item id was not found."
-    400_error:
-      description: The server cannot (or will not) perform the client's reqeuested action.
-      type: object
-      properties:
-        error:
-          type: object
-          properties:
-            code:
-              type: integer
-              default: 404
-            message:
-              type: string
-              default: "Your request body did not contain valid values. Alter your input and try again."
-    500_error:
-      description: The server encountered an internal error and is not able to process your request.
-      type: object
-      properties:
-        error:
-          type: object
-          properties:
-            code:
-              type: integer
-              default: 500
-            message:
-              type: string
-              default: "The server had an internal error and could not process your request. Please try again later."
-    payload:
-      description: A list of query results.
-      type: object
-      example: "payloads"
-      properties:
-        payloads:
+        status:
+          type: string
+          default: "Error"
+        code:
+          type: string
+          default: "SOME_ERROR"
+        message:
+          type: string
+          default: "Data"
+        errors:
           type: array
-    blog_tag_payload:
-      description: A list of 
-    post_tag:
+          default: "If applicable, element specific troubleshooting messages will appear here."
+    bulk_tags:
+      description: A collection of optional tag ids and optional tag names.
+      type: object
+      example: {"id": [0, 1, 2], "name": ["Rust", "Programming", "Learning"]}
+      properties:
+        id:
+          description: An array of tag ids. 
+          type: array
+          items:
+            type: integer
+          example: [3, 4, 5]
+        name:
+          description: An array of tag names
+          type: array
+          items:
+            type: string
+          example: ["Rust", "Learning"]
+    tag:
       description: A short description of a topic.
       type: object
       example: {"id": 0, "name": "Rust"}
@@ -665,7 +836,11 @@ components:
           example: 4
           minimum: 0
           maximum: 255
-    post_tag_input:
+    tags:
+      type: array
+      items:
+        $ref: '#/components/schemas/tag'
+    tag_input:
       description: Create a new tag to be attached to posts.
       type: object
       example: {"name": "Rust"}
@@ -673,9 +848,58 @@ components:
         name:
           description: A Case-insensitive word or short phrase that describes a topic covered in your post.
           type: string
-          maxLength: 50
+          maxLength: 100
       required:
         - name
+    post:
+      type: object
+      description: Post object
+      properties:
+        id:
+          type: integer
+          format: i32
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+        author:
+          type: string
+          minLength: 1
+          maxLength: 100
+        created:
+          type: string
+          format: date-time
+        last_updated:
+          type: string
+          format: date
+        content:
+          type: string
+      required:
+        - id
+        - title
+        - author
+    posts:
+      type: array
+      items:
+        $ref: '#/components/schemas/post'
+    post_with_tags:
+      type: object
+      properties:
+        post:
+          $ref: "#/components/schemas/post"
+        tags:
+          $ref: "#/components/schemas/tags"
+    post_input:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 50
+        content:
+          type: string
+      required:
+        - title
+        - author
     user:
       type: object
       description: User object
@@ -715,55 +939,55 @@ components:
       required:
         - id
         - role
-    post:
+    user_no_phc:
       type: object
-      description: Post object
+      description: User object
       properties:
         id:
           type: integer
-          format: i32
-        title:
+          format: int32
+        email:
           type: string
-          minLength: 1
-          maxLength: 100
-        author:
+          minLength: 0
+          maxLength: 50
+          format: email
+        first_name: 
           type: string
-          minLength: 1
-          maxLength: 100
+          minLength: 0
+          maxLength: 25
+        last_name:
+          type: string
+          minLength: 0
+          maxLength: 25
         created:
           type: string
           format: date-time
-        last_updated:
+        role:
+          type: integer
+          format: int32
+        active:
+          type: boolean
+          format: string
+        last_access:
           type: string
           format: date
-        content:
-          type: string
-        tags:
-          type: array
-          items:
-            $ref: "#/components/schemas/post_tag"
       required:
         - id
-        - title
-        - author
-    user_list:
+        - role
+    users:
       type: array
       minItems: 1
       maxItems: 100
       description: List of Users
       items:
         $ref: "#/components/schemas/user"
-    post_list:
-      type: array
-      minItems: 1
-      maxItems: 100
-      description: List of Posts and their tags
-      items:
-        $ref: "#/components/schemas/post"
     user_input:
       type: object
       properties:
         email:
+          type: string
+          maxLength: 50
+        pass:
           type: string
           maxLength: 50
         first_name:
@@ -774,17 +998,25 @@ components:
           maxLength: 25
         role:
           type: integer
+        active:
+          type: boolean
       required:
         - email
         - role
-    post_input:
+    login_input:
       type: object
       properties:
-        title:
+        email:
           type: string
           maxLength: 50
-        content:
+        pass:
           type: string
+          maxLength: 50
       required:
-        - title
-        - author
+        - email
+        - role
+  securitySchemes:
+    CookieJWT:
+      type: apiKey
+      in: cookie
+      name: jwt

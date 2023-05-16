@@ -11,7 +11,7 @@ mod schema;
 mod auth;
 mod pw;
 mod jwt;
-mod blog_tags;
+mod post_tags;
 mod myjsonapi;
 
 mod api;
@@ -45,10 +45,10 @@ async fn openapi_yml() -> Option<NamedFile> {
     NamedFile::open("src/homepage.yml").await.ok()
 }
 
-#[get("/openapi_index")]
+/* #[get("/openapi_index")]
 async fn openapi_index() -> Option<NamedFile> {
     NamedFile::open("static/3rd_party/swagger-ui-4.18.1/dist/index.html").await.ok()
-}
+} */
 
 #[launch]
 fn rocket() -> _ {
@@ -72,22 +72,24 @@ fn rocket() -> _ {
         .mount("/", routes![home, openapi_yml])
         .mount("/api", routes![api_info])
         .mount("/api/tags", routes![
+            tag::routes::get,
             get_tags,
-            //get_tags_,
-            //get_tag_by_id,
-            //get_tag_by_name,
-            add_tag
+            tag::routes::patch,
+            tag::routes::post,
+            tag::routes::delete,
+            tag::routes::get_posts,
         ])
         .mount("/api/posts", routes![
-            get_post_by_id,
-            get_tags_on_post,
-            get_post_by_title,
-            get_post_by_author, 
-            get_post_by_tags,
-            get_post_by_tags_from_to,
-            get_post_by_from_to,
-            update_post,
-            new_post
+            post::routes::get_posts,
+            post::routes::get,
+            post::routes::post_,
+            post::routes::patch,
+            post::routes::delete,
+            put_post_tag,
+            patch_post_tags,
+            patch_post_tags_form,
+            put_post_tags_form,
+            delete_post_tag
         ])
         .mount("/api/roles", routes![
             get_roles,
@@ -96,19 +98,21 @@ fn rocket() -> _ {
             update_role,
             delete_role
         ])
-        .mount("/session", routes![
+        /* .mount("/session", routes![
             create_session, 
             destroy_session
-        ])
+        ]) */
             .register("/session", catchers![
                 email_or_pw_incorrect
             ])
-        .mount("/user", routes![
+        .mount("/users", routes![
             add_user, 
             delete_user, 
             update_user,
             get_user,
-            patch_user
+            start_session,
+            end_session,
+            //patch_user
         ])
             .register("/user", catchers![
                 dup_entry,
