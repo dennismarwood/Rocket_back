@@ -112,6 +112,7 @@ fn rocket() -> _ {
             get_user,
             start_session,
             end_session,
+            confirm_pw,
             //patch_user
         ])
             .register("/user", catchers![
