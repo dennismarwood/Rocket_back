@@ -65,8 +65,9 @@ pub mod routes {
     #[derive(Debug, FromForm, serde::Deserialize, AsChangeset)]
     #[diesel(table_name = user)]
     pub struct UpdateUser {
-        pub email : Option<String>,
-        pub phc :Option<String>, // Must be labled phc for diesel but this will initially be the user's new password
+        pub email: Option<String>,
+        #[field(name = uncased("pass"))]
+        pub phc: Option<String>, // Must be labled phc for diesel but this will initially be the user's new password
         pub first_name: Option<String>,
         pub last_name: Option<String>,
         pub role: Option<i32>,
@@ -87,7 +88,13 @@ pub mod routes {
 
     #[patch("/<id>", format = "json", data="<updated_user>")]
     pub async fn update_user(id: i32, conn: DbConn, mut updated_user: Json<UpdateUser>, _x: Level1) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+        /*
+            A user exists that can reset anyone's pw and other user setting. The guard ensure this is a "Level1" user.
+            If other users are added in the future, or just another user of "Dennis" that can just publish blogs, then it would be a good idea to include 
+            another patch method that does not take a user id and is limited to updating just the user who's id is found from their jwt (i.e. themsleves).
+         */
         //If a new pw was sent, calculate phc first.
+        println!("{:?}", updated_user);
         if updated_user.phc.is_some() {
             let pass = updated_user.phc.clone().unwrap();
             match get_phc(pass) {
@@ -107,7 +114,33 @@ pub mod routes {
       }  
     } 
     
-    #[get("/")]//
+    #[post("/confirm_pw", format = "text", data="<form_pw>")]
+    pub async fn confirm_pw(form_pw: String, conn:DbConn, user_id: ValidSession, _x: Level1) -> Result<Status, status::Custom<Json<AResponse>>> {
+        //Whatever a user passes in as data is interpreted as a pw value.
+        //A user must have a session (ValidSession guard).
+        //Using the session user_id, check if pw is valid.
+        //Get user's phc
+        let user_phc = match
+            conn.run( move |conn| {
+                user::table
+                .select(user::phc)
+                .filter(user::id.eq(user_id.id))
+                .first::<Option<String>>(conn)
+            }).await
+            {
+                Ok(u_phc) => u_phc,
+                Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))) //User has session but cannot be found in db?!
+                //Err(_) => return Err(status::Custom(Status::Unauthorized, Json(AResponse::_401(Some(String::from("Provided password did not match user's current pw."))))))
+            };
+            println!("form_pw: {:?}", form_pw);
+        match crate::pw::verify_password(&form_pw, &user_phc.unwrap_or_default()) {
+                Ok(_) => {println!("Sending 200");return Ok(Status::Ok)}, //User provided pw is valid.
+                Err(_) => {println!("Sending 401");return Err(status::Custom(Status::Unauthorized, Json(AResponse::_401(Some(String::from("Existing password was invalid."))))))}, //Provided pw was invalid
+            }
+            
+    }
+
+    #[get("/")]
     pub async fn get_user(conn:DbConn, user_id: ValidSession, _x: Level1) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
         match conn.run(move |c: &mut MysqlConnection| {
             user::table
@@ -193,6 +226,16 @@ pub mod routes {
                 json!(format!("Diesel returned an error: {}", e))))
         }
     }
+
+/*     #[post("/session/update_pw", format = "json", data="<login>")]
+    pub async fn validate_pw(conn: DbConn, credentials: Json<Login>) -> Option<status::Custom<Json<AResponse>>> {
+        //To update a pw, the existing pw must be verified.
+        match crate::pw::verify_password(&login.password, &user.phc.clone().unwrap_or_default()) {
+            Ok(_) => (user, role), //provided email and pw are good
+            Err(_) => return Err(status::Custom(Status::Unauthorized, Json(AResponse::_401(Some(String::from("Provided email or password was invalid.")))))), //Provided pw was invalid
+        },
+    }
+ */
 
     #[post("/session", format = "json", data="<login>")]
     pub async fn start_session(conn: DbConn, login: Json<Login>, jar: &CookieJar<'_>, server_env_vars: &State<EnvVariables>) -> Result<Status, status::Custom<Json<AResponse>>> {
