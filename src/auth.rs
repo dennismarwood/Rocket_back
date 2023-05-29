@@ -141,3 +141,59 @@ impl<'r> FromRequest <'r> for ValidSession {
         }
     }
 }
+
+//A user is either logged in or not. And a logged in user is either a Admin or not.
+pub struct AdminUser{
+    pub id: i32,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest <'r> for AdminUser {
+    type Error = ();
+
+    async fn from_request(request: &'r Request<'_>) -> Outcome<AdminUser, ()> {// MyError<Value>> { 
+        let secret = request.rocket().state::<EnvVariables>().unwrap().jwt_secret.clone();
+        match request.cookies().get("jwt") 
+        {
+            Some(unvalidated_jwt) => {
+                match validate_jwt(unvalidated_jwt.value(), secret.as_ref()) 
+                {
+                    Ok(claims) => {//JWT is present and valid for...
+                        match claims.user_id 
+                        {
+                            1 => Outcome::Success(AdminUser{id: claims.user_id}), //Admin
+                            _ => Outcome::Forward(()), //Not an admin
+                        }
+                    }
+                    Err(_) => Outcome::Forward(()), //JWT is present but invalid, probably expired
+                }
+            },
+            None => Outcome::Forward(()), //Had no JWT
+        }
+    }
+}
+
+pub struct StandardUser{
+    pub id: i32,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest <'r> for StandardUser {
+    type Error = ();
+
+    async fn from_request(request: &'r Request<'_>) -> Outcome<StandardUser, ()> {// MyError<Value>> { 
+        let secret = request.rocket().state::<EnvVariables>().unwrap().jwt_secret.clone();
+        match request.cookies().get("jwt") 
+        {
+            Some(unvalidated_jwt) => {
+                match validate_jwt(unvalidated_jwt.value(), secret.as_ref()) 
+                {
+                    Ok(claims) => Outcome::Success(StandardUser{id: claims.user_id}),
+                    Err(_) => Outcome::Forward(()), //JWT is present but invalid, probably expired
+                }
+            },
+            None => Outcome::Forward(()), //Had no JWT
+        }
+    }
+}
+//No session

@@ -16,7 +16,7 @@ use crate::models::EnvVariables;
 //#[macro_use] extern crate serde_derive;
 
 pub mod routes {
-    use crate::{auth::{Level1, ValidSession}, jwt::get_jwt};
+    use crate::{auth::{Level1, ValidSession, StandardUser, AdminUser}, jwt::get_jwt};
     use super::*;
 
     #[catch(422)]
@@ -66,7 +66,7 @@ pub mod routes {
     #[diesel(table_name = user)]
     pub struct UpdateUser {
         pub email: Option<String>,
-        #[field(name = uncased("pass"))]
+        #[field(name = uncased("password"))]
         pub phc: Option<String>, // Must be labled phc for diesel but this will initially be the user's new password
         pub first_name: Option<String>,
         pub last_name: Option<String>,
@@ -74,6 +74,19 @@ pub mod routes {
         pub active: Option<bool>,
     }
 
+    #[derive(Debug, Queryable, Selectable, serde::Serialize)]
+    #[diesel(table_name = user)]
+    pub struct UserWithoutPHC {
+        pub id: i32,
+        pub email: String,
+        pub first_name: Option<String>,
+        pub last_name: Option<String>,
+        pub created: Option<chrono::NaiveDateTime>,
+        pub role: i32,
+        pub active: Option<bool>,
+        //#[serde(skip_serializing_if = "Option::is_none")]
+        pub last_access: Option<chrono::NaiveDate>,
+    }
     /* #[patch("/", format="form", data="<updated_user>")]
     pub async fn _patch_user_form(updated_user: Form<UpdateUser>) -> Value {
         /* 
@@ -86,15 +99,37 @@ pub mod routes {
         todo!("\n\npatch_user not implimented for the content-type:application/x-www-form-urlencoded. {:?}", updated_user)
     } */
 
-    #[patch("/<id>", format = "json", data="<updated_user>")]
-    pub async fn update_user(id: i32, conn: DbConn, mut updated_user: Json<UpdateUser>, _x: Level1) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
-        /*
-            A user exists that can reset anyone's pw and other user setting. The guard ensure this is a "Level1" user.
-            If other users are added in the future, or just another user of "Dennis" that can just publish blogs, then it would be a good idea to include 
-            another patch method that does not take a user id and is limited to updating just the user who's id is found from their jwt (i.e. themsleves).
-         */
+
+    #[patch("/", format = "json", data="<updated_user>")]
+    pub async fn update_self(conn: DbConn, user_id: ValidSession, mut updated_user: Json<UpdateUser>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+        // All users can update thier data.
+
         //If a new pw was sent, calculate phc first.
         println!("{:?}", updated_user);
+        if updated_user.phc.is_some() {
+            let pass = updated_user.phc.clone().unwrap();
+            match get_phc(pass) {
+                Ok(user_phc) => updated_user.phc = Some(user_phc),
+                Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem calculating the user's phc.
+            }
+        };
+
+        match conn.run(move |c| {
+            diesel::update(user::table)
+            .filter(user::id.eq(user_id.id))
+            .set(updated_user.into_inner())
+            .execute(c)
+        }).await {
+        Ok(_) => return Ok(status::NoContent),
+        Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem updating the user.
+      }  
+    } 
+
+    #[patch("/<id>", format = "json", data="<updated_user>")]
+    pub async fn update_user(id: i32, conn: DbConn, mut updated_user: Json<UpdateUser>, _user: AdminUser) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+        //An admin can update anyone's profile.
+        //If a new pw was sent, calculate phc first.
+        println!("Pathing a user {:?}", updated_user);
         if updated_user.phc.is_some() {
             let pass = updated_user.phc.clone().unwrap();
             match get_phc(pass) {
@@ -132,7 +167,6 @@ pub mod routes {
                 Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))) //User has session but cannot be found in db?!
                 //Err(_) => return Err(status::Custom(Status::Unauthorized, Json(AResponse::_401(Some(String::from("Provided password did not match user's current pw."))))))
             };
-            println!("form_pw: {:?}", form_pw);
         match crate::pw::verify_password(&form_pw, &user_phc.unwrap_or_default()) {
                 Ok(_) => {println!("Sending 200");return Ok(Status::Ok)}, //User provided pw is valid.
                 Err(_) => {println!("Sending 401");return Err(status::Custom(Status::Unauthorized, Json(AResponse::_401(Some(String::from("Existing password was invalid."))))))}, //Provided pw was invalid
@@ -140,26 +174,87 @@ pub mod routes {
             
     }
 
-    #[get("/")]
-    pub async fn get_user(conn:DbConn, user_id: ValidSession, _x: Level1) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+    #[get("/list_of_all_users")]
+    pub async fn list_of_all_users(conn:DbConn, user: AdminUser) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
         match conn.run(move |c: &mut MysqlConnection| {
             user::table
-                .filter(user::id.eq(user_id.id))
-                .first::<User>(c)
+                .filter(user::id.ne(user.id))
+                .select(UserWithoutPHC::as_select())
+                .load(c)
+            }).await
+        {
+            Ok(users) => {
+                //Convert user object into json. Convert that json into a serde_json map.
+                //Remove an element from the map.
+                //Convert the map back into json.
+                //let mut map: serde_json::Map<String, Value> = serde_json::from_value(json!(entry)).unwrap();
+                //map.remove("phc");
+                //let entry = json!(map);
+                
+                return Ok(Json(AResponse::_200(Some(json!(users)))))
+            },
+            Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem retrieving the user.
+        };
+    }
+
+    #[get("/<id>")]
+    pub async fn get_user_by_id(id: i32, conn:DbConn, _user: AdminUser) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+        match conn.run(move |c: &mut MysqlConnection| {
+            user::table
+                .filter(user::id.eq(id))
+                .select(UserWithoutPHC::as_select())
+                .first(c)
+            }).await
+        {
+            Ok(entry) => {
+                return Ok(Json(AResponse::_200(Some(json!(entry)))))
+            },
+            Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem retrieving the user.
+        };
+    }
+
+    #[get("/")]
+    pub async fn get_admin_user(conn:DbConn, user: AdminUser) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+        match conn.run(move |c: &mut MysqlConnection| {
+            user::table
+                .filter(user::id.eq(user.id))
+                .select(UserWithoutPHC::as_select())
+                .first(c)
             }).await
         {
             Ok(entry) => {
                 //Convert user object into json. Convert that json into a serde_json map.
                 //Remove an element from the map.
                 //Convert the map back into json.
-                let mut map: serde_json::Map<String, Value> = serde_json::from_value(json!(entry)).unwrap();
-                map.remove("phc");
-                let entry = json!(map);
+                //let mut map: serde_json::Map<String, Value> = serde_json::from_value(json!(entry)).unwrap();
+                //map.remove("phc");
+                //let entry = json!(map);
                 
                 return Ok(Json(AResponse::_200(Some(json!(entry)))))
             },
             Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem retrieving the user.
         };
+    }
+
+    #[get("/", rank=2)]
+    pub async fn get_user(conn:DbConn, user: StandardUser) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+        match conn.run(move |c: &mut MysqlConnection| {
+            user::table
+                .filter(user::id.eq(user.id))
+                .select(UserWithoutPHC::as_select())
+                .first(c)
+            }).await
+        {
+            Ok(user) => {                
+                return Ok(Json(AResponse::_200(Some(json!(user)))))
+            },
+            Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem retrieving the user.
+        };
+    }
+
+    #[get("/", rank=3)]
+    pub async fn get_no_user() -> Status {
+        Status::Unauthorized
     }
 
     #[post("/", format = "json", data="<new_user>")]//
@@ -279,7 +374,7 @@ pub mod routes {
     }
 
     #[delete("/session")]
-    pub async fn end_session(jar: &CookieJar<'_>, _x: Level1) -> Status {
+    pub async fn end_session(jar: &CookieJar<'_>) -> Status {
         jar.remove(Cookie::named("jwt"));
         Status::Ok 
     }

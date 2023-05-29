@@ -109,10 +109,15 @@ fn rocket() -> _ {
             add_user, 
             delete_user, 
             update_user,
+            update_self,
+            get_no_user,
             get_user,
+            get_admin_user,
             start_session,
             end_session,
             confirm_pw,
+            list_of_all_users,
+            get_user_by_id,
             //patch_user
         ])
             .register("/user", catchers![
