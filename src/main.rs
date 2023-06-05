@@ -68,7 +68,7 @@ fn rocket() -> _ {
     rocket::build()
         //.mount("/my_path", StaticFiles::from("/www/public"))
         //.mount("/openapi", FileServer::from("/static/3rd_party/swagger-ui-4.18.1/dist"))
-        .mount("/openapi", FileServer::from(relative!("/static/3rd_party/swagger-ui-4.18.2/dist")))
+        .mount("/openapi", FileServer::from(relative!("/static/3rd_party/swagger-ui-4.18.1/dist")))
         .mount("/", routes![home, openapi_yml])
         .mount("/api", routes![api_info])
         .mount("/api/tags", routes![

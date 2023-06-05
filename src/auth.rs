@@ -159,7 +159,7 @@ impl<'r> FromRequest <'r> for AdminUser {
                 match validate_jwt(unvalidated_jwt.value(), secret.as_ref()) 
                 {
                     Ok(claims) => {//JWT is present and valid for...
-                        match claims.user_id 
+                        match claims.role_id
                         {
                             1 => Outcome::Success(AdminUser{id: claims.user_id}), //Admin
                             _ => Outcome::Forward(()), //Not an admin

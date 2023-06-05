@@ -150,7 +150,7 @@ pub mod routes {
     } 
     
     #[post("/confirm_pw", format = "text", data="<form_pw>")]
-    pub async fn confirm_pw(form_pw: String, conn:DbConn, user_id: ValidSession, _x: Level1) -> Result<Status, status::Custom<Json<AResponse>>> {
+    pub async fn confirm_pw(form_pw: String, conn:DbConn, user_id: ValidSession) -> Result<Status, status::Custom<Json<AResponse>>> {
         //Whatever a user passes in as data is interpreted as a pw value.
         //A user must have a session (ValidSession guard).
         //Using the session user_id, check if pw is valid.
@@ -301,7 +301,7 @@ pub mod routes {
     }
 
     #[delete("/<id>")]
-    pub async fn delete_user(id: i32, conn: DbConn, _x: Level1) -> Result<Status, status::Custom<Value>> {
+    pub async fn delete_user(id: i32, conn: DbConn, _user: AdminUser) -> Result<Status, status::Custom<Value>> {
         match conn.run(move |c| {
             diesel::delete(user::table
                 .filter(user::id.eq(id))
@@ -314,7 +314,7 @@ pub mod routes {
                     1 => return Ok(Status::NoContent),
                     0 => return Ok(Status::NotFound),
                     _ => return Err(status::Custom(Status::InternalServerError, 
-                        json!(format!("Should have only deleted up to 1 record, BUT DELETED {}!!!", count)))),
+                        json!(format!("Should have only deleted up to 1 record, but deleted {}!", count)))),
                 }
             },
             Err(e) => return Err(status::Custom(Status::InternalServerError, 
