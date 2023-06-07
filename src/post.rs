@@ -81,7 +81,7 @@ pub mod routes {
                 "content" => Some(PostFields::Content(String::from(v))),
                 "created" => {
                     match chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d") {
-                        Ok(d) => Some(PostFields::Created(d.and_hms(0, 0, 0))),
+                        Ok(d) => Some(PostFields::Created(d.and_hms_opt(0, 0, 0).unwrap_or_default())),
                         _ => None,
                     }
                 }
@@ -165,7 +165,12 @@ pub mod routes {
                                             chrono::NaiveDate::parse_from_str(r, "%Y-%m-%d"),
                                         )
                                         {
-                                            query = query.or_filter(post::created.between(l.and_hms(0, 0, 0), r.and_hms(0, 0, 0)));
+                                            query = query.or_filter(
+                                                post::created.between(
+                                                    l.and_hms_opt(0, 0, 0).unwrap_or_default(), 
+                                                    r.and_hms_opt(0, 0, 0).unwrap_or_default()
+                                                )
+                                            );
                                         }
                             "lastupdated" => if let (Ok(l), Ok(r)) = (
                                             chrono::NaiveDate::parse_from_str(l, "%Y-%m-%d"), 
