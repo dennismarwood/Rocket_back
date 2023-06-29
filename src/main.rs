@@ -42,6 +42,7 @@ use models::EnvVariables;
 
 #[get("/openapi_yml")]
 async fn openapi_yml() -> Option<NamedFile> {
+    //https://github.com/swagger-api/swagger-ui/blob/master/docs/usage/installation.md#plain-old-htmlcssjs-standalone
     NamedFile::open("src/homepage.yml").await.ok()
 }
 
@@ -103,10 +104,10 @@ fn rocket() -> _ {
             create_session, 
             destroy_session
         ]) */
-            .register("/session", catchers![
+            .register("/api/session", catchers![
                 email_or_pw_incorrect
             ])
-        .mount("/users", routes![
+        .mount("/api/users", routes![
             add_user, 
             delete_user, 
             update_user,
@@ -119,6 +120,8 @@ fn rocket() -> _ {
             confirm_pw,
             list_of_all_users,
             get_user_by_id,
+            get_user_by_id_unauthorized,
+            get_user_by_id_forbidden,
             //patch_user
         ])
             .register("/user", catchers![
