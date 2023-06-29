@@ -94,7 +94,7 @@ paths:
             schema:
               $ref: "#/components/schemas/user_input"
       responses:
-        '201':
+        '204':
           description: Your changes have been applied.
         default:
           description: An error has occured.
