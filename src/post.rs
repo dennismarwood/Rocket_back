@@ -10,7 +10,7 @@ use rocket::response::status;
 use rocket::serde::json::{Json, json};
 
 pub mod routes {
-    use crate::auth::Level1;
+    use crate::{auth::{Level1, ValidSession, StandardUser, AdminUser}, jwt::get_jwt};
     //pub async fn new_post<'a>(conn: DbConn, new_entry: Json<NewBlogEntryWithTags>, _x: Level1)
 
     use super::*;
@@ -34,7 +34,7 @@ pub mod routes {
     #[diesel(table_name = post)]
     pub struct NewPost {
         pub title: String,
-        pub author: String,
+        pub author: Option<String>,
         pub created: Option<chrono::NaiveDateTime>,
         pub last_updated: Option<chrono::NaiveDate>,
         pub content: Option<String>,
@@ -272,9 +272,9 @@ pub mod routes {
         if !(1..=100).contains(&p.title.len()) {
             messages.push(json!({"field": "title", "message":  "Valid length is 1 to 100 chars."}));
         };
-        if !(1..=100).contains(&p.author.len()) {
+        /* if !(1..=100).contains(&p.author.len()) {
             messages.push(json!({"field": "author", "message":  "Valid length is 1 to 100 chars."}));
-        };
+        }; */
         
         match messages.len() 
         {
@@ -331,12 +331,13 @@ pub mod routes {
     }
 
     #[post("/", format="json", data="<new_post>")]
-    pub async fn post_(conn: DbConn, new_post: Json<NewPost>, _x: Level1) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
+    pub async fn post_(conn: DbConn, mut new_post: Json<NewPost>, user: ValidSession) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
         //Do not accept tags with a new post. User should attach tags in a seperate request.
         validate_user_input(&new_post)?;
         
-        let (post_title, post_author) = (&new_post.title.clone(), &new_post.author.clone());
+        let (post_title, post_author) = (&new_post.title.clone(), &user.id.to_string());
         
+        new_post.author = Some(user.id.to_string());
         match conn.run(move |c| {
             diesel::insert_into(post::table)
             .values(&new_post.into_inner())
@@ -347,7 +348,7 @@ pub mod routes {
                 match get_a_post_id(&conn, post_title, post_author).await {
                     Some(id) => {
                         let uri = uri!("/api/posts/", get(id)).to_string();
-                        let body = json!(AResponse::_201(Some(uri.clone()))).to_string();
+                        let body = json!(AResponse::_201(Some(id.to_string()))).to_string();
                         Ok(status::Created::new(uri).body(body))
                     },
                     None => Ok(status::Created::new("")),//Or maybe this should be a 500?
@@ -371,7 +372,7 @@ pub mod routes {
     }
 
     #[patch("/<id>",  format="json", data="<new_post>")]
-    pub async fn patch(id: i32, conn: DbConn, new_post: Json<NewPost>, _x: Level1) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+    pub async fn patch(id: i32, conn: DbConn, new_post: Json<NewPost>, user: ValidSession) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
         //TODO NewPost is the wrong data type here. Need one that just takes in the optional post title and optional post content.
         //Do not accept tags with a patch. User should attach tags in a seperate request.
         validate_user_input(&new_post)?;
@@ -381,7 +382,7 @@ pub mod routes {
                 UpdatePost {
                     id, 
                     title: new_post.title.clone(), //This needs to be updated to take in the user name from the jwt.
-                    author: new_post.author.clone(),
+                    author: user.id.to_string(),
                     created: None,//Some(new_post.created.unwrap_or_else(|| chrono::offset::Local::now().naive_local())),
                     last_updated: Some(chrono::offset::Local::now().date_naive()),
                     content: new_post.content.clone(),
