@@ -101,8 +101,8 @@ pub mod routes {
 
 
     #[patch("/", format = "json", data="<updated_user>")]
-    pub async fn update_self(conn: DbConn, user_id: ValidSession, mut updated_user: Json<UpdateUser>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
-        // All users can update thier data.
+    pub async fn update_self(conn: DbConn, user: ValidSession, mut updated_user: Json<UpdateUser>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+        // All users can update their data.
 
         //If a new pw was sent, calculate phc first.
         println!("{:?}", updated_user);
@@ -116,7 +116,7 @@ pub mod routes {
 
         match conn.run(move |c| {
             diesel::update(user::table)
-            .filter(user::id.eq(user_id.id))
+            .filter(user::id.eq(user.id))
             .set(updated_user.into_inner())
             .execute(c)
         }).await {
@@ -149,8 +149,13 @@ pub mod routes {
       }  
     } 
     
-    #[post("/confirm_pw", format = "text", data="<form_pw>")]
-    pub async fn confirm_pw(form_pw: String, conn:DbConn, user_id: ValidSession) -> Result<Status, status::Custom<Json<AResponse>>> {
+    #[derive(Debug, serde::Deserialize)]
+    pub struct ConfirmPW {
+        password: String,
+    }
+
+    #[post("/confirm_pw", format = "json", data="<confirm_pw>")]
+    pub async fn confirm_pw(confirm_pw: Json<ConfirmPW>, conn:DbConn, user: ValidSession) -> Result<Status, status::Custom<Json<AResponse>>> {
         //Whatever a user passes in as data is interpreted as a pw value.
         //A user must have a session (ValidSession guard).
         //Using the session user_id, check if pw is valid.
@@ -159,7 +164,7 @@ pub mod routes {
             conn.run( move |conn| {
                 user::table
                 .select(user::phc)
-                .filter(user::id.eq(user_id.id))
+                .filter(user::id.eq(user.id))
                 .first::<Option<String>>(conn)
             }).await
             {
@@ -167,8 +172,8 @@ pub mod routes {
                 Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))) //User has session but cannot be found in db?!
                 //Err(_) => return Err(status::Custom(Status::Unauthorized, Json(AResponse::_401(Some(String::from("Provided password did not match user's current pw."))))))
             };
-        match crate::pw::verify_password(&form_pw, &user_phc.unwrap_or_default()) {
-                Ok(_) => {println!("Sending 200");return Ok(Status::Ok)}, //User provided pw is valid.
+        match crate::pw::verify_password(&confirm_pw.password, &user_phc.unwrap_or_default()) {
+                Ok(_) => {println!("Sending 204");return Ok(Status::NoContent)}, //User provided pw is valid.
                 Err(_) => {println!("Sending 401");return Err(status::Custom(Status::Unauthorized, Json(AResponse::_401(Some(String::from("Existing password was invalid."))))))}, //Provided pw was invalid
             }
             
@@ -211,6 +216,16 @@ pub mod routes {
             },
             Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem retrieving the user.
         };
+    }
+
+    #[get("/<_id>", rank=2)]
+    pub async fn get_user_by_id_forbidden(_id: i32, _user: ValidSession) -> Status {
+        Status::Forbidden
+    }
+
+    #[get("/<_id>", rank=3)]
+    pub async fn get_user_by_id_unauthorized(_id: i32) -> Status {
+        Status::Unauthorized
     }
 
     #[get("/")]
