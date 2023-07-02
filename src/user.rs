@@ -101,7 +101,8 @@ pub mod routes {
 
 
     #[patch("/", format = "json", data="<updated_user>")]
-    pub async fn update_self(conn: DbConn, user: ValidSession, mut updated_user: Json<UpdateUser>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+    pub async fn update_self(conn: DbConn, user_session: Result<ValidSession, status::Custom<Json<AResponse>>>, mut updated_user: Json<UpdateUser>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+        let user = user_session?;
         // All users can update their data.
 
         //If a new pw was sent, calculate phc first.

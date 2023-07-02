@@ -122,9 +122,13 @@ However, there is no data that is generated in this guard that cannot be just wr
 in the catcher. See the entries in JSONAPIError above.
 Even though I can send data back to the catcher there is no need to do so in this case.
 */
+use rocket::serde::json::{Json};
+use crate::models::{AResponse};
+use rocket::response::status;
+
 #[rocket::async_trait]
 impl<'r> FromRequest <'r> for ValidSession {
-    type Error = ();
+    type Error = status::Custom<Json<AResponse>>;
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<ValidSession, Self::Error> {// MyError<Value>> { 
         let secret = request.rocket().state::<EnvVariables>().unwrap().jwt_secret.clone();
@@ -134,10 +138,10 @@ impl<'r> FromRequest <'r> for ValidSession {
                 match validate_jwt(unvalidated_jwt.value(), secret.as_ref()) 
                 {
                     Ok(claims) => Outcome::Success(ValidSession{id: claims.user_id}),
-                    Err(_) => Outcome::Failure((Status::Unauthorized, ())), //JWT is present but invalid, probably expired
+                    Err(_) => Outcome::Failure((Status::Unauthorized, status::Custom(Status::Unauthorized, Json(AResponse::_401(None))))), //JWT is present but invalid, probably expired
                 }
             },
-            None => Outcome::Failure((Status::Unauthorized, ())), //Had no JWT
+            None => Outcome::Failure((Status::Unauthorized, status::Custom(Status::Unauthorized, Json(AResponse::_401(None))))), //Had no JWT
         }
     }
 }
