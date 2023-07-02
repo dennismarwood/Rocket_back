@@ -74,6 +74,27 @@ pub mod routes {
         pub active: Option<bool>,
     }
 
+    #[derive(Debug, FromForm, serde::Deserialize, AsChangeset)]
+    #[diesel(table_name = user)]
+    pub struct UpdateUserNoRole {
+        pub email: Option<String>,
+        #[field(name = uncased("password"))]
+        pub phc: Option<String>, // Must be labled phc for diesel but this will initially be the user's new password
+        pub first_name: Option<String>,
+        pub last_name: Option<String>,
+        pub active: Option<bool>,
+    }
+
+    impl UpdateUserNoRole {
+        pub fn is_all_none(&self) -> bool {
+            self.email.is_none() && 
+            self.phc.is_none() &&
+            self.first_name.is_none() && 
+            self.last_name.is_none() &&
+            self.active.is_none()
+        }
+    }
+
     #[derive(Debug, Queryable, Selectable, serde::Serialize)]
     #[diesel(table_name = user)]
     pub struct UserWithoutPHC {
@@ -101,12 +122,16 @@ pub mod routes {
 
 
     #[patch("/", format = "json", data="<updated_user>")]
-    pub async fn update_self(conn: DbConn, user_session: Result<ValidSession, status::Custom<Json<AResponse>>>, mut updated_user: Json<UpdateUser>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
-        let user = user_session?;
+    pub async fn update_self(conn: DbConn, user_session: Result<ValidSession, status::Custom<Json<AResponse>>>, mut updated_user: Json<UpdateUserNoRole>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
         // All users can update their data.
 
+        //Verify user has a ValidSession
+        let user = user_session?;
+    
+        //I don't expect an empty json set. But don't want to return a 500 if they manage to send me one somehow.
+        if updated_user.is_all_none() {return Ok(status::NoContent)};
+
         //If a new pw was sent, calculate phc first.
-        println!("{:?}", updated_user);
         if updated_user.phc.is_some() {
             let pass = updated_user.phc.clone().unwrap();
             match get_phc(pass) {
@@ -122,7 +147,7 @@ pub mod routes {
             .execute(c)
         }).await {
         Ok(_) => return Ok(status::NoContent),
-        Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem updating the user.
+        Err(e) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem updating the user.
       }  
     } 
 
@@ -130,7 +155,6 @@ pub mod routes {
     pub async fn update_user(id: i32, conn: DbConn, mut updated_user: Json<UpdateUser>, _user: AdminUser) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
         //An admin can update anyone's profile.
         //If a new pw was sent, calculate phc first.
-        println!("Pathing a user {:?}", updated_user);
         if updated_user.phc.is_some() {
             let pass = updated_user.phc.clone().unwrap();
             match get_phc(pass) {
