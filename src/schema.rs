@@ -47,9 +47,18 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    user_tags (user_id, tag_id) {
+        user_id -> Integer,
+        tag_id -> Integer,
+    }
+}
+
 diesel::joinable!(post_tags -> post (post_id));
 diesel::joinable!(post_tags -> tag (tag_id));
 diesel::joinable!(user -> role (role));
+diesel::joinable!(user_tags -> tag (tag_id));
+diesel::joinable!(user_tags -> user (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     post,
@@ -57,4 +66,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     role,
     tag,
     user,
+    user_tags,
 );
