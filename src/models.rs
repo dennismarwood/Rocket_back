@@ -161,6 +161,16 @@ impl AResponse {
             errors: None,
         }
     }
+    pub fn _403(message: Option<String>) -> Self {
+        AResponse {
+            status: String::from("Error"),
+            data: None,
+            message: message,
+            location: None,
+            code: Some(String::from("FORBIDDEN")),
+            errors: None,
+        }
+    }
     pub fn _404(message: Option<String>) -> Self {
         AResponse {
             status: String::from("Error"),

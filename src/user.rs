@@ -122,14 +122,14 @@ pub mod routes {
 
 
     #[patch("/", format = "json", data="<updated_user>")]
-    pub async fn update_self(conn: DbConn, user_session: Result<ValidSession, status::Custom<Json<AResponse>>>, mut updated_user: Json<UpdateUserNoRole>) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+    pub async fn update_self(conn: DbConn, user_session: Result<ValidSession, status::Custom<Json<AResponse>>>, mut updated_user: Json<UpdateUserNoRole>) -> Result<Status, status::Custom<Json<AResponse>>> {
         // All users can update their data.
 
         //Verify user has a ValidSession
         let user = user_session?;
     
         //I don't expect an empty json set. But don't want to return a 500 if they manage to send me one somehow.
-        if updated_user.is_all_none() {return Ok(status::NoContent)};
+        if updated_user.is_all_none() {return Ok(Status::NoContent)};
 
         //If a new pw was sent, calculate phc first.
         if updated_user.phc.is_some() {
@@ -140,19 +140,25 @@ pub mod routes {
             }
         };
 
-        match conn.run(move |c| {
+        let updated_row_count = match conn.run(move |c| {
             diesel::update(user::table)
             .filter(user::id.eq(user.id))
             .set(updated_user.into_inner())
             .execute(c)
         }).await {
-        Ok(_) => return Ok(status::NoContent),
-        Err(e) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem updating the user.
-      }  
+            Ok(c) => c, //return Ok(status::NoContent),
+            Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem updating the user.
+        };
+
+        match updated_row_count {
+            0 => return Ok(Status::NotFound),
+            1 => return Ok(Status::NoContent),
+            _ => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //Needs to be updated to notify client that more than 1 record was updated.
+        }
     } 
 
     #[patch("/<id>", format = "json", data="<updated_user>")]
-    pub async fn update_user(id: i32, conn: DbConn, mut updated_user: Json<UpdateUser>, _user: AdminUser) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+    pub async fn update_user(id: i32, conn: DbConn, mut updated_user: Json<UpdateUser>, __: AdminUser) -> Result<Status, status::Custom<Json<AResponse>>> {
         //An admin can update anyone's profile.
         //If a new pw was sent, calculate phc first.
         if updated_user.phc.is_some() {
@@ -163,17 +169,35 @@ pub mod routes {
             }
         };
 
-        match conn.run(move |c| {
+        //update user
+        //user not found -> 404
+        //executed update -> 204
+        let updated_row_count = match conn.run(move |c| {
             diesel::update(user::table)
             .filter(user::id.eq(id))
             .set(updated_user.into_inner())
             .execute(c)
         }).await {
-        Ok(_) => return Ok(status::NoContent),
-        Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem updating the user.
-      }  
+            Ok(c) => c, //return Ok(status::NoContent),
+            Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem updating the user.
+        };
+        match updated_row_count {
+            0 => return Ok(Status::NotFound),
+            1 => return Ok(Status::NoContent),
+            _ => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //Needs to be updated to notify client that more than 1 record was updated.
+      }
     } 
-    
+
+    #[patch("/<_id>", rank = 2)]
+    pub async fn update_user_forbidden(_id: i32, __: StandardUser) -> status::Custom<Json<AResponse>> {
+        status::Custom(Status::Forbidden, Json(AResponse::_403(None)))
+    }
+
+    #[patch("/<_id>", rank = 3)]
+    pub async fn update_user_unauthorized(_id: i32) -> status::Custom<Json<AResponse>> {
+        status::Custom(Status::Forbidden, Json(AResponse::_401(None)))
+    }
+
     #[derive(Debug, serde::Deserialize)]
     pub struct ConfirmPW {
         password: String,
@@ -226,6 +250,16 @@ pub mod routes {
             Err(_) => return Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))), //There was a problem retrieving the user.
         };
     }
+    
+    #[get("/list_of_all_users", rank = 2)]
+    pub async fn list_of_all_users_forbidden(__: StandardUser) -> status::Custom<Json<AResponse>> {
+        status::Custom(Status::Forbidden, Json(AResponse::_403(None)))
+    }
+
+    #[get("/list_of_all_users", rank = 3)]
+    pub async fn list_of_all_users_unauthorized() -> status::Custom<Json<AResponse>> {
+        status::Custom(Status::Unauthorized, Json(AResponse::_401(None)))
+    }
 
     #[get("/<id>")]
     pub async fn get_user_by_id(id: i32, conn:DbConn, _user: AdminUser) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
@@ -243,18 +277,18 @@ pub mod routes {
         };
     }
 
-    #[get("/<_id>", rank=2)]
-    pub async fn get_user_by_id_forbidden(_id: i32, _user: ValidSession) -> Status {
-        Status::Forbidden
+    #[get("/<_id>", rank=4)]
+    pub async fn get_user_by_id_forbidden(_id: i32, _user: ValidSession) -> status::Custom<Json<AResponse>> {
+        status::Custom(Status::Forbidden, Json(AResponse::_403(None)))
     }
 
-    #[get("/<_id>", rank=3)]
-    pub async fn get_user_by_id_unauthorized(_id: i32) -> Status {
-        Status::Unauthorized
+    #[get("/<_id>", rank=5)]
+    pub async fn get_user_by_id_unauthorized(_id: i32) -> status::Custom<Json<AResponse>> {
+        status::Custom(Status::Unauthorized, Json(AResponse::_401(None)))
     }
 
     #[get("/")]
-    pub async fn get_admin_user(conn:DbConn, user: AdminUser) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+    pub async fn get_user_admin(conn:DbConn, user: AdminUser) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
         match conn.run(move |c: &mut MysqlConnection| {
             user::table
                 .filter(user::id.eq(user.id))
@@ -293,8 +327,8 @@ pub mod routes {
     }
 
     #[get("/", rank=3)]
-    pub async fn get_no_user() -> Status {
-        Status::Unauthorized
+    pub async fn get_user_unauthorized() -> status::Custom<Json<AResponse>> {
+        status::Custom(Status::Unauthorized, Json(AResponse::_401(None)))
     }
 
     #[post("/", format = "json", data="<new_user>")]//
@@ -341,7 +375,7 @@ pub mod routes {
     }
 
     #[delete("/<id>")]
-    pub async fn delete_user(id: i32, conn: DbConn, _user: AdminUser) -> Result<Status, status::Custom<Value>> {
+    pub async fn delete_user(id: i32, conn: DbConn, __: AdminUser) -> Result<Status, status::Custom<Value>> {
         match conn.run(move |c| {
             diesel::delete(user::table
                 .filter(user::id.eq(id))
@@ -362,15 +396,15 @@ pub mod routes {
         }
     }
 
-/*     #[post("/session/update_pw", format = "json", data="<login>")]
-    pub async fn validate_pw(conn: DbConn, credentials: Json<Login>) -> Option<status::Custom<Json<AResponse>>> {
-        //To update a pw, the existing pw must be verified.
-        match crate::pw::verify_password(&login.password, &user.phc.clone().unwrap_or_default()) {
-            Ok(_) => (user, role), //provided email and pw are good
-            Err(_) => return Err(status::Custom(Status::Unauthorized, Json(AResponse::_401(Some(String::from("Provided email or password was invalid.")))))), //Provided pw was invalid
-        },
+    #[delete("/<_id>", rank = 2)]
+    pub async fn delete_user_forbidden(_id: i32, __: StandardUser) -> status::Custom<Json<AResponse>> {
+        status::Custom(Status::Forbidden, Json(AResponse::_403(None)))
     }
- */
+
+    #[delete("/<_id>", rank = 3)]
+    pub async fn delete_user_unauthorized(_id: i32) -> status::Custom<Json<AResponse>> {
+        status::Custom(Status::Unauthorized, Json(AResponse::_401(None)))
+    }
 
     #[post("/session", format = "json", data="<login>")]
     pub async fn start_session(conn: DbConn, login: Json<Login>, jar: &CookieJar<'_>, server_env_vars: &State<EnvVariables>) -> Result<Status, status::Custom<Json<AResponse>>> {
