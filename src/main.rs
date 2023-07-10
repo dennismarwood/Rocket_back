@@ -43,6 +43,7 @@ use models::EnvVariables;
 #[get("/openapi_yml")]
 async fn openapi_yml() -> Option<NamedFile> {
     //https://github.com/swagger-api/swagger-ui/blob/master/docs/usage/installation.md#plain-old-htmlcssjs-standalone
+    //url: "http://localhost:8001/openapi_yml",
     NamedFile::open("src/homepage.yml").await.ok()
 }
 
