@@ -1,18 +1,19 @@
 use crate::config::DbConn;
-use crate::schema::{tag, post_tags};
-use crate::models::{Tag, AResponse, QParams, Filters, BlogTags};
+use crate::schema::{tag, post_tags, user_tags};
+use crate::models::{Tag, AResponse, QParams, Filters, BlogTags, NewUserTag, LastInsertId};
 use diesel::prelude::*;
-use diesel::result::DatabaseErrorKind::{UniqueViolation, NotNullViolation };
-use diesel::result::Error::{DatabaseError, QueryBuilderError};
-use rocket::http::{Status};
+use diesel::result::DatabaseErrorKind::{UniqueViolation, NotNullViolation};
+use diesel::result::Error::{DatabaseError, QueryBuilderError, RollbackErrorOnCommit};
+use rocket::http::Status;
 use rocket::response::status;
 use rocket::serde::json::{Json, json};
 
 
 pub mod routes {
-    use crate::auth::Level1;
+    use crate::auth::{Level1, ValidSession};//, jwt::get_jwt};
     use diesel::mysql::Mysql;
     use super::*;
+    use crate::tag::helper::get_a_tag_id;
 
     enum TagFields {
         Id(i32),
@@ -55,7 +56,7 @@ pub mod routes {
             let mut query = tag::table.into_boxed::<Mysql>();
             //page indexing
             let start: i64 = params.start.unwrap_or(0);
-            let step: i64 = params.step.unwrap_or(QParams::calculate_limit(&params));
+            let step: i64 = params.step.unwrap_or(100);
             query = query.offset(start);
             query = query.limit(step);
 
@@ -131,7 +132,6 @@ pub mod routes {
                     _ => {},
                 }
             }
-            
             query.load::<Tag>(c)
             
 
@@ -169,6 +169,17 @@ pub mod routes {
         }
     }
 
+    // #[get("/")]
+    // pub async fn get_tags_no_p(conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+    //     println!("HERE");
+    //     match parse_and_query(&conn).await {
+    //         Ok(tags) => 
+    //             Ok(Json(AResponse::_200(Some(json!(tags))))),
+    //         Err(e) => 
+    //             Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+    //     }
+    // }
+
     #[get("/?<params..>")]
     pub async fn get_tags(params: QParams, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
         match parse_and_query(params, &conn).await {
@@ -180,7 +191,7 @@ pub mod routes {
     }
 
     #[post("/", format="json", data="<new_tag>")]
-    pub async fn post(conn: DbConn, new_tag: Json<NewTag>, _x: Level1) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
+    pub async fn post(conn: DbConn, new_tag: Json<NewTag>, user: ValidSession) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
         //Diesel does not have an error code for invalid input. Manually check.
         if !(1..=100).contains(&new_tag.name.len()) {
             return Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
@@ -189,36 +200,51 @@ pub mod routes {
                 Some(json!([{"field": "name", "message":  "Valid length is 1 to 100 chars."}]))))));
         }
 
-        let tag_name = &new_tag.name.clone();
-        
+        let tag_name = new_tag.name.clone();
+
         match conn.run(move |c| {
-            diesel::insert_into(tag::table)
-            .values(&new_tag.into_inner())
-            .execute(c)
+            c.transaction(|c| {
+                diesel::insert_or_ignore_into(tag::table)
+                    .values(&new_tag.into_inner())
+                    .execute(c)?;
+
+                let tag_id: i32 = tag::table
+                .filter(tag::name.eq(&tag_name))
+                .select(tag::id)
+                .first(c)?;
+            
+                let new_user_tag = NewUserTag { user_id: user.id, tag_id: tag_id };
+
+                diesel::insert_into(user_tags::table)
+                .values(&new_user_tag)
+                .execute(c)?;
+                Ok(tag_id)
+            })
+            
+ 
         }).await {
-            Ok(_) => {
-                //Successfully created tag, now retrieve it's id
-                match helper::get_a_tag_id(&conn, tag_name).await {
-                    Some(id) => {
-                        let uri = uri!("/api/tags/", get(id)).to_string();
-                        let body = json!(AResponse::_201(Some(uri.clone()))).to_string();
-                        Ok(status::Created::new(uri).body(body))
-                    },
-                    None => Ok(status::Created::new("")),//Or maybe this should be a 500?
-                }
+            Ok(tag_id) => {
+                let uri = uri!("/api/tags/", get(tag_id)).to_string();
+                let body = json!(AResponse::_201(Some(uri.clone()))).to_string();
+                Ok(status::Created::new(uri).body(body))
             },
             Err(DatabaseError(UniqueViolation, d)) => 
-                Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
-                    Some(String::from(d.message())), 
-                    Some(String::from("UNIQUE_VIOLATION")),
-                    None)))),
+                Err(status::Custom(Status::Conflict, Json(AResponse::_409(
+                    Some(String::from(d.message())))))),
             
             Err(DatabaseError(NotNullViolation, d)) => 
                 Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
                     Some(String::from(d.message())), 
                     Some(String::from("NOT_NULL_VIOLATION")),
                     None)))),
-            
+                
+            Err(RollbackErrorOnCommit { rollback_error, commit_error }) => {
+                Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
+                    Some(format!("{} + {}", rollback_error, commit_error)), 
+                    Some(String::from("ROLL_BACK_ERROR")),
+                    None))))
+            },
+    
             Err(e) => 
                 Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
         }
@@ -334,17 +360,11 @@ pub mod routes {
 pub mod helper {
     use super::*;
     //mysql does not return an id after creating a new entry. This helper function does only that.
-    pub async fn get_a_tag_id( conn: &DbConn, name: &String) -> Option<i32> {
+    pub async fn get_a_tag_id( conn: &DbConn, name: &String) -> QueryResult<i32> {
         let name = name.clone();
-        match conn.run(  |c| {
-            tag::table
+        conn.run(  |c| tag::table
                 .filter(tag::name.eq(name))
                 .select(tag::id)
-                .first::<i32>(c)
-        }).await {
-            Ok(id) => Some(id),
-            Err(_) => None,
-        }
+                .first::<i32>(c)).await
     }
-
 }

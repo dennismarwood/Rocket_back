@@ -1,4 +1,4 @@
-use super::schema::{post, tag, post_tags, user, role};
+use super::schema::{post, tag, post_tags, user, role, user_tags};
 use rocket::serde::json::{Value};
 
 #[derive(Debug, FromForm)]
@@ -181,6 +181,16 @@ impl AResponse {
             errors: None,
         }
     }
+    pub fn _409(message: Option<String>) -> Self {
+        AResponse {
+            status: String::from("Error"),
+            data: None,
+            message: message,
+            location: None,
+            code: Some(String::from("CONFLICT")),
+            errors: None,
+        }
+    }
     pub fn _422(message: Option<String>, code: Option<String>, errors: Option<Value>) -> Self {
             AResponse {
                 status: String::from("Error"),
@@ -240,6 +250,20 @@ pub struct BlogEntry {
 pub struct Tag {
     pub id: i32,
     pub name: String,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = user_tags)]
+pub struct NewUserTag {
+    pub user_id: i32,
+    pub tag_id: i32,
+}
+
+use diesel::sql_types::BigInt;
+#[derive(QueryableByName, Debug)]
+pub struct LastInsertId {
+    #[sql_type = "BigInt"]
+    pub id: i64,
 }
 
 #[derive(serde::Serialize, Queryable, Associations, Identifiable, Debug, serde::Deserialize, Selectable, Insertable)]
