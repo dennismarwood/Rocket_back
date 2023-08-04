@@ -1,6 +1,6 @@
 use rocket::http::Status;
 use rocket::request::{Request, FromRequest, Outcome};
-use crate::jwt::{validate_jwt};
+use crate::jwt::validate_jwt;
 use crate::models::EnvVariables;
 //use rocket::serde::json::{Json, Value, json};
 //use rocket::response::status;
@@ -122,8 +122,8 @@ However, there is no data that is generated in this guard that cannot be just wr
 in the catcher. See the entries in JSONAPIError above.
 Even though I can send data back to the catcher there is no need to do so in this case.
 */
-use rocket::serde::json::{Json};
-use crate::models::{AResponse};
+use rocket::serde::json::Json;
+use crate::models::AResponse;
 use rocket::response::status;
 
 #[rocket::async_trait]

@@ -76,11 +76,13 @@ fn rocket() -> _ {
         .mount("/api", routes![api_info])
         .mount("/api/tags", routes![
             tag::routes::get,
-            get_tags,
+            get_users_tags,
+            //get_tags_admin_user,
+            //get_tags_standard_user,
             tag::routes::patch,
             tag::routes::post,
             tag::routes::delete,
-            tag::routes::get_posts,
+            tag::routes::get_posts
         ])
         .mount("/api/posts", routes![
             post::routes::get_posts,

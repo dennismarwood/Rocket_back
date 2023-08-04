@@ -1,6 +1,6 @@
 use crate::config::DbConn;
-use crate::schema::{tag, post_tags, user_tags};
-use crate::models::{Tag, AResponse, QParams, Filters, BlogTags, NewUserTag, LastInsertId};
+use crate::schema::{tag, post_tags, user_tags, user};
+use crate::models::{Tag, AResponse, QParams, Filters, BlogTags, NewUserTag, TagsUsers};
 use diesel::prelude::*;
 use diesel::result::DatabaseErrorKind::{UniqueViolation, NotNullViolation};
 use diesel::result::Error::{DatabaseError, QueryBuilderError, RollbackErrorOnCommit};
@@ -10,14 +10,15 @@ use rocket::serde::json::{Json, json};
 
 
 pub mod routes {
-    use crate::auth::{Level1, ValidSession};//, jwt::get_jwt};
-    use diesel::mysql::Mysql;
+    use crate::auth::{Level1, ValidSession, StandardUser, AdminUser};//, jwt::get_jwt};
+    use diesel::{mysql::Mysql, result::Error::NotFound};
     use super::*;
     use crate::tag::helper::get_a_tag_id;
 
     enum TagFields {
         Id(i32),
         Name(String),
+        Owner(i32),
     }
     
     #[derive(Debug, Insertable, serde::Deserialize)]
@@ -43,6 +44,12 @@ pub mod routes {
                         _ => None,
                     }
                 },
+                "owner" => {
+                    match v.parse::<i32>() {
+                        Ok(v) => Some(TagFields::Owner(v)),
+                        _ => None,
+                    }
+                },
                 "name" => Some(TagFields::Name(String::from(v))),
                 _ => None,
             }
@@ -65,6 +72,7 @@ pub mod routes {
                     match query_parameter {
                         TagFields::Id(id) => query = query.or_filter(tag::id.eq(id)),
                         TagFields::Name(name) => query = query.or_filter(tag::name.eq(name)),
+                        TagFields::Owner(id) => query = query.or_filter( tag::id.eq_any( user_tags::table.filter( user_tags::user_id.eq(id)).select(user_tags::tag_id))),
                     }
                 }
             }
@@ -74,6 +82,7 @@ pub mod routes {
                     match query_parameter {
                         TagFields::Id(id) => query = query.or_filter(tag::id.ge(id)),
                         TagFields::Name(name) => query = query.or_filter(tag::name.ge(name)),
+                        _ => {},
                     }
                 }
             }
@@ -83,6 +92,7 @@ pub mod routes {
                     match query_parameter {
                         TagFields::Id(id) => query = query.or_filter(tag::id.le(id)),
                         TagFields::Name(name) => query = query.or_filter(tag::name.le(name)),
+                        _ => {},
                     }
                 }
             }
@@ -169,26 +179,101 @@ pub mod routes {
         }
     }
 
-    // #[get("/")]
-    // pub async fn get_tags_no_p(conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
-    //     println!("HERE");
-    //     match parse_and_query(&conn).await {
+    #[get("/?<params..>")]
+    pub async fn get_users_tags(params: QParams, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+        //Retrieve user's tags
+        // let users_tags: Vec<i32> = 
+        //     conn.run(move |c| {  
+        //         match user::table
+        //             .inner_join(user_tags::table)
+        //             .filter(user::first_name.eq(&first_name))
+        //             .select(user_tags::tag_id)
+        //             .load(c)
+        //             {
+        //                 Ok(tags) => tags,
+        //                 Err(_) => 
+        //                     Vec::new(),
+        //             }
+        //     }).await;
+        
+        // if users_tags.len() == 0 {params.step = Some(0)};
+
+        // for t in users_tags {
+        //     params.filter.eq.push(format!("id={}", t));
+        // }
+
+        match parse_and_query(params, &conn).await {
+            Ok(tags) => {
+                Ok(Json(AResponse::_200(Some(json!(tags)))))
+            },
+            Err(e) => 
+                Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+        }
+    }
+
+    // #[get("/?<params..>", rank = 1)]
+    // //Don't even need this. Tags are not secret and neither are owners, though they are obfuscated.
+    // pub async fn get_tags_admin_user(params: QParams, conn: DbConn, __: AdminUser) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+
+    //     let params_tags = match parse_and_query(params, &conn).await {
+    //         Ok(tags) => tags,
+    //         Err(e) => 
+    //             return Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+    //     };
+
+    //     // Extract the ids from the Tags vector
+    //     let tag_ids: Vec<i32> = params_tags.iter().map(|tag| tag.id).collect();
+ 
+    //     conn.run(move |c| {  
+    //         match user::table
+    //             .inner_join(user_tags::table.on(user::id.eq(user_tags::user_id)))
+    //             .inner_join(tag::table.on(user_tags::tag_id.eq(tag::id)))
+    //             .filter(tag::id.eq_any(&tag_ids)) 
+    //             .select((user::id, user::first_name, tag::id, tag::name))
+    //             .load::<TagsUsers>(c)
+    //             {
+    //                 Ok(mut tags) => {
+    //                     tags.sort_by_key(|tag| tag_ids.iter().position(|&id| id == tag.tag_id).unwrap_or(usize::MAX));
+    //                     Ok(Json(AResponse::_200(Some(json!(tags)))))
+    //                 },
+    //                 Err(e) => 
+    //                     Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
+    //             }
+    //     }).await
+            
+    // }
+
+    // #[get("/?<params..>", rank = 2)]
+    // //Don't even need this. Tags are not secret and neither are owners, though they are obfuscated.
+    // pub async fn get_tags_standard_user(mut params: QParams, conn: DbConn, user: StandardUser) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
+    //     //Retrieve user's tags
+    //     let users_tags: Vec<i32> = 
+    //         conn.run(move |c| {  
+    //             match user::table
+    //                 .inner_join(user_tags::table)
+    //                 .filter(user::id.eq(&user.id))
+    //                 .select(user_tags::tag_id)
+    //                 .load(c)
+    //                 {
+    //                     Ok(tags) => tags,
+    //                     Err(_) => 
+    //                         Vec::new(),
+    //                 }
+    //         }).await;
+        
+    //     if users_tags.len() == 0 {params.step = Some(0)};
+
+    //     for t in users_tags {
+    //         params.filter.eq.push(format!("id={}", t));
+    //     }
+
+    //     match parse_and_query(params, &conn).await {
     //         Ok(tags) => 
     //             Ok(Json(AResponse::_200(Some(json!(tags))))),
     //         Err(e) => 
     //             Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
     //     }
     // }
-
-    #[get("/?<params..>")]
-    pub async fn get_tags(params: QParams, conn: DbConn) -> Result<Json<AResponse>, status::Custom<Json<AResponse>>> {
-        match parse_and_query(params, &conn).await {
-            Ok(tags) => 
-                Ok(Json(AResponse::_200(Some(json!(tags))))),
-            Err(e) => 
-                Err(status::Custom(Status::InternalServerError, Json(AResponse::error(Some(json!([{"message":  format!("{:?}",e) }])))))),
-        }
-    }
 
     #[post("/", format="json", data="<new_tag>")]
     pub async fn post(conn: DbConn, new_tag: Json<NewTag>, user: ValidSession) -> Result<status::Created<String>, status::Custom<Json<AResponse>> > {
@@ -251,7 +336,7 @@ pub mod routes {
     }
 
     #[patch("/<id>",  format="json", data="<new_tag>")]//Patch 204 400 404 422
-    pub async fn patch(id: i32, conn: DbConn, new_tag: Json<NewTag>, _x: Level1) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
+    pub async fn patch(id: i32, conn: DbConn, new_tag: Json<NewTag>, user: ValidSession) -> Result<status::NoContent, status::Custom<Json<AResponse>>> {
         //Diesel does not have an error code for invalid input. Manually check.
         if !(1..=100).contains(&new_tag.name.len()) {
             return Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
@@ -259,11 +344,28 @@ pub mod routes {
                 Some(String::from("INVALID_INPUT")),
                 Some(json!([{"field": "name", "message":  "Valid length is 1 to 100 chars."}]))))));
         }
-
+        
         match conn.run(move |c| {
+
+            //Confirm user owns this tag
+            user::table
+                .inner_join(user_tags::table)
+                .filter(
+                    //user owns tag
+                    user::id.eq(user.id)
+                    .and(user_tags::tag_id.eq(id))
+                    //user is admin
+                    .or(
+                        user::id.eq(user.id)
+                        .and(user::role.eq(1))
+                    )
+                )
+                .select(user_tags::tag_id)
+                .first::<i32>(c)?;
+            
             let updated_tag = UpdateTag {id, name: Some(new_tag.name.clone())};
             diesel::update(&updated_tag).set(&updated_tag).execute(c)
-            
+
             //println!("\n{}\n", diesel::debug_query::<Mysql , _>(&x));
             //https://docs.diesel.rs/master/diesel/result/enum.Error.html
         }).await {
@@ -271,11 +373,15 @@ pub mod routes {
                 match rows {
                     1 => Ok(status::NoContent),
                     0 => Err(status::Custom(Status::NotFound, Json(AResponse::_404(
-                            Some(String::from("Could not locate tag with provided id.")))))),
+                            Some(String::from("Could not locate tag with provided id owned by this user.")))))),
                     _ => Err(status::Custom(Status::InternalServerError, Json(AResponse::_500()))),
                 }
             }
 
+            Err(diesel::NotFound) => 
+                Err(status::Custom(Status::NotFound, Json(AResponse::_404(
+                    Some(String::from("Could not locate tag with the provided id that is owned by this user.")))))),
+            
             Err(DatabaseError(UniqueViolation, d)) => 
                 Err(status::Custom(Status::UnprocessableEntity, Json(AResponse::_422(
                     Some(String::from(d.message())), 
@@ -298,7 +404,7 @@ pub mod routes {
     }
 
     #[delete("/<id>")]//Delete 204 400 404 422
-    pub async fn delete(id: i32, conn: DbConn, _x: Level1) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
+    pub async fn delete(id: i32, conn: DbConn, user: ValidSession) -> Result< Json<AResponse>, status::Custom<Json<AResponse>> > {
         //Retrieve the target tag
         let target_tag = retrieve_one_tag(id, &conn).await?;
 

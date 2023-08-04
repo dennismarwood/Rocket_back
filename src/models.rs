@@ -1,5 +1,5 @@
 use super::schema::{post, tag, post_tags, user, role, user_tags};
-use rocket::serde::json::{Value};
+use rocket::serde::json::Value;
 
 #[derive(Debug, FromForm)]
     pub struct QParams {
@@ -250,6 +250,14 @@ pub struct BlogEntry {
 pub struct Tag {
     pub id: i32,
     pub name: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Queryable)]
+pub struct TagsUsers {
+    pub user_id: i32,
+    pub user_first_name: Option<String>,
+    pub tag_id: i32, 
+    pub tag_name: String,
 }
 
 #[derive(Insertable)]
